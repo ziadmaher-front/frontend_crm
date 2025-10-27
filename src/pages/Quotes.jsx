@@ -1,8 +1,8 @@
 
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -396,30 +396,31 @@ export default function Quotes() {
       const account = accounts.find(a => a.id === quote.account_id);
       const contact = contacts.find(c => c.id === quote.contact_id);
 
-      const templateData = {
-        quote_number: quote.quote_number,
-        quote_name: quote.quote_name,
-        quote_date: format(new Date(quote.created_date), 'MMMM d, yyyy'),
-        valid_until: quote.valid_until ? format(new Date(quote.valid_until), 'MMMM d, yyyy') : '',
-        customer_name: account?.company_name || '',
-        customer_address: account?.billing_address || '',
-        customer_city: account?.billing_city || '',
-        customer_country: account?.billing_country || '',
-        contact_name: contact ? `${contact.first_name} ${contact.last_name}` : '',
-        contact_email: contact?.email || '',
-        contact_phone: contact?.phone || '',
-        line_items: quote.line_items || [],
-        subtotal: quote.subtotal || 0,
-        tax_percentage: quote.tax_percentage || 0,
-        tax_amount: quote.tax_amount || 0,
-        total_amount: quote.total_amount || 0,
-        currency: quote.currency || 'USD',
-        currency_symbol: CURRENCY_SYMBOLS[quote.currency] || '$',
-        payment_terms: quote.payment_terms || '',
-        delivery_terms: quote.delivery_terms || '',
-        terms_and_conditions: quote.terms_and_conditions || '',
-        customer_notes: quote.customer_notes || '',
-      };
+      // TODO: Use templateData for PDF generation
+      // const templateData = {
+      //   quote_number: quote.quote_number,
+      //   quote_name: quote.quote_name,
+      //   quote_date: format(new Date(quote.created_date), 'MMMM d, yyyy'),
+      //   valid_until: quote.valid_until ? format(new Date(quote.valid_until), 'MMMM d, yyyy') : '',
+      //   customer_name: account?.company_name || '',
+      //   customer_address: account?.billing_address || '',
+      //   customer_city: account?.billing_city || '',
+      //   customer_country: account?.billing_country || '',
+      //   contact_name: contact ? `${contact.first_name} ${contact.last_name}` : '',
+      //   contact_email: contact?.email || '',
+      //   contact_phone: contact?.phone || '',
+      //   line_items: quote.line_items || [],
+      //   subtotal: quote.subtotal || 0,
+      //   tax_percentage: quote.tax_percentage || 0,
+      //   tax_amount: quote.tax_amount || 0,
+      //   total_amount: quote.total_amount || 0,
+      //   currency: quote.currency || 'USD',
+      //   currency_symbol: CURRENCY_SYMBOLS[quote.currency] || '$',
+      //   payment_terms: quote.payment_terms || '',
+      //   delivery_terms: quote.delivery_terms || '',
+      //   terms_and_conditions: quote.terms_and_conditions || '',
+      //   customer_notes: quote.customer_notes || '',
+      // };
 
       toast.success("Generating PDF with active template...");
 
@@ -563,7 +564,7 @@ export default function Quotes() {
         detected_variables: commonVariables,
         organization_id: currentUser?.primary_organization_id,
       });
-    } catch (error) {
+    } catch {
       toast.error("Failed to upload template");
     }
   };

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,9 +12,7 @@ import {
   DollarSign,
   Target,
   Calendar,
-  Filter,
   Sparkles,
-  Building2,
   Activity,
   BarChart3,
   PieChart as PieChartIcon,
@@ -23,7 +21,6 @@ import {
 import { 
   BarChart, 
   Bar, 
-  LineChart, 
   Line, 
   PieChart, 
   Pie, 
@@ -41,10 +38,7 @@ import {
   PolarAngleAxis,
   PolarRadiusAxis,
   Radar,
-  ComposedChart,
-  Scatter,
-  ScatterChart,
-  ZAxis
+  ComposedChart
 } from "recharts";
 import { 
   Select,
@@ -53,23 +47,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { format, subDays, subMonths, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter } from "date-fns";
+import { format, subMonths } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 
 const COLORS = ['#6366F1', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#14B8A6', '#F97316'];
 
 export default function Reports() {
   const [dateRange, setDateRange] = useState("month");
-  const [selectedMetric, setSelectedMetric] = useState("revenue");
 
   const { data: leads = [] } = useQuery({
     queryKey: ['leads'],
     queryFn: () => base44.entities.Lead.list(),
-  });
-
-  const { data: contacts = [] } = useQuery({
-    queryKey: ['contacts'],
-    queryFn: () => base44.entities.Contact.list(),
   });
 
   const { data: accounts = [] } = useQuery({
@@ -95,11 +83,6 @@ export default function Reports() {
   const { data: users = [] } = useQuery({
     queryKey: ['users'],
     queryFn: () => base44.entities.User.list(),
-  });
-
-  const { data: tasks = [] } = useQuery({
-    queryKey: ['tasks'],
-    queryFn: () => base44.entities.Task.list(),
   });
 
   // Calculate metrics
