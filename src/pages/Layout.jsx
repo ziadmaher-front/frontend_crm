@@ -146,7 +146,7 @@ const PAGE_TITLES = {
   "Integrations": "Integrations",
 };
 
-export default function Layout({ children, currentPageName }) {
+export default function Layout({ children }) {
   const location = useLocation();
   const [user, setUser] = React.useState(null);
   const [searchOpen, setSearchOpen] = React.useState(false);

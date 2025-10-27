@@ -9,8 +9,6 @@ import {
   Plus, 
   Mail,
   Edit,
-  Eye,
-  Copy,
   BarChart3
 } from "lucide-react";
 import {

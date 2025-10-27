@@ -13,9 +13,7 @@ import {
   Eye, 
   Trash2,
   Search,
-  Filter,
   CheckCircle,
-  Clock,
   AlertCircle
 } from "lucide-react";
 import {
@@ -118,7 +116,7 @@ export default function Documents() {
         status: "Draft",
         document_name: formData.document_name || file.name
       });
-    } catch (error) {
+    } catch {
       toast.error("Failed to upload document");
     } finally {
       setUploading(false);

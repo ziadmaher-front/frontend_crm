@@ -393,8 +393,9 @@ export default function Quotes() {
         throw new Error("No active template found. Please upload a template first.");
       }
 
-      const account = accounts.find(a => a.id === quote.account_id);
-      const contact = contacts.find(c => c.id === quote.contact_id);
+      // TODO: Use account and contact for PDF generation
+      // const account = accounts.find(a => a.id === quote.account_id);
+      // const contact = contacts.find(c => c.id === quote.contact_id);
 
       // TODO: Use templateData for PDF generation
       // const templateData = {
