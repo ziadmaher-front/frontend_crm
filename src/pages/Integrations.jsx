@@ -506,7 +506,7 @@ export default function Integrations() {
               <div className="flex gap-2 mb-2">
                 <AlertCircle className="w-4 h-4 text-blue-600 mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-blue-900">What we'll access:</p>
+                  <p className="text-sm font-medium text-blue-900">What we&apos;ll access:</p>
                   <ul className="text-xs text-blue-800 mt-1 space-y-1">
                     {connectingIntegration?.features.map((feature, idx) => (
                       <li key={idx}>• {feature}</li>

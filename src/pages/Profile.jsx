@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,10 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { 
   User, 
-  Mail, 
-  Phone, 
   Building2, 
-  Upload,
   Save,
   Camera
 } from "lucide-react";
@@ -93,7 +90,7 @@ export default function Profile() {
       setUser({ ...user, profile_photo_url: file_url });
       toast.success("Profile photo updated");
       queryClient.invalidateQueries({ queryKey: ['user'] });
-    } catch (error) {
+    } catch {
       toast.error("Failed to upload photo");
     } finally {
       setUploading(false);
