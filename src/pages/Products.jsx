@@ -12,7 +12,6 @@ import {
   Package,
   Edit,
   DollarSign,
-  BarChart3,
   AlertCircle,
   Briefcase
 } from "lucide-react";
@@ -244,7 +243,7 @@ export default function Products() {
         records={filteredProducts}
         onRefresh={() => queryClient.invalidateQueries({ queryKey: ['products'] })}
       >
-        {({ selectedRecords, isSelected, handleSelectRecord }) => (
+        {({ isSelected, handleSelectRecord }) => (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredProducts.map((product) => {
               const isLowStock = (product.stock_quantity || 0) <= (product.reorder_level || 0);

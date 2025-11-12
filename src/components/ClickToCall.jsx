@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { useApiErrorHandler } from '@/hooks/useErrorHandler';
 
 export default function ClickToCall({ phoneNumber, recipientName, relatedTo }) {
   const [showCallDialog, setShowCallDialog] = useState(false);
@@ -96,6 +97,8 @@ export default function ClickToCall({ phoneNumber, recipientName, relatedTo }) {
     }
   };
 
+  const { handleApiError } = useApiErrorHandler();
+
   const handleEndCall = async () => {
     setCallInProgress(false);
 
@@ -117,7 +120,7 @@ export default function ClickToCall({ phoneNumber, recipientName, relatedTo }) {
       setShowCallDialog(false);
       resetCall();
     } catch (error) {
-      toast.error("Failed to log call: " + error.message);
+      handleApiError(error, 'log-call');
     }
   };
 

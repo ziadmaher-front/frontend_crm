@@ -28,7 +28,7 @@ import {
   Maximize2,
   X
 } from 'lucide-react';
-import { base44Client } from '@/lib/base44';
+import { base44 } from '@/api/base44Client';
 
 const LiveChat = () => {
   const [conversations, setConversations] = useState([

@@ -1,10 +1,15 @@
 import React, { useState } from "react";
+import IntegrationHealth from "@/components/integrations/IntegrationHealth";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import IntegrationHub from "../components/IntegrationHub";
+import WebhookManager from "../components/WebhookManager";
+import APIIntegrations from "../components/APIIntegrations";
 import { 
   Calendar, 
   Mail, 
@@ -30,7 +35,13 @@ import {
   FileText,
   ShoppingCart,
   TrendingUp,
-  BarChart2
+  BarChart2,
+  Globe,
+  Webhook,
+  Server,
+  CheckCircle,
+  Clock,
+  Activity
 } from "lucide-react";
 import {
   Dialog,
@@ -215,9 +226,10 @@ const INTEGRATION_CATALOG = [
 ];
 
 export default function Integrations() {
+  const [activeTab, setActiveTab] = useState('overview');
   const [showConnectDialog, setShowConnectDialog] = useState(false);
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
-  const [selectedIntegration, setSelectedIntegration] = useState(null);
+  const [selectedIntegration] = useState(null);
   const [selectedProvider, setSelectedProvider] = useState("");
   const [connectingIntegration, setConnectingIntegration] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
@@ -232,6 +244,89 @@ export default function Integrations() {
     queryKey: ['integrations'],
     queryFn: () => base44.entities.Integration.list(),
   });
+
+  // Mock integration stats
+  const integrationStats = {
+    totalIntegrations: INTEGRATION_CATALOG.length,
+    activeIntegrations: integrations.filter(i => i.user_email === currentUser?.email && i.status === 'Active').length,
+    pendingIntegrations: 2,
+    failedIntegrations: 1,
+    totalWebhooks: 15,
+    activeWebhooks: 12,
+    totalAPIs: 5,
+    activeAPIs: 3,
+    totalSyncs: 2847,
+    lastSync: new Date().toISOString(),
+    syncErrors: 7,
+    uptime: 99.2
+  };
+
+  const recentActivity = [
+    {
+      id: 1,
+      type: 'integration',
+      action: 'connected',
+      service: 'Salesforce',
+      timestamp: new Date(Date.now() - 300000).toISOString(),
+      status: 'success'
+    },
+    {
+      id: 2,
+      type: 'webhook',
+      action: 'triggered',
+      service: 'Stripe Payment',
+      timestamp: new Date(Date.now() - 600000).toISOString(),
+      status: 'success'
+    },
+    {
+      id: 3,
+      type: 'api',
+      action: 'sync_failed',
+      service: 'Mailchimp',
+      timestamp: new Date(Date.now() - 900000).toISOString(),
+      status: 'error'
+    },
+    {
+      id: 4,
+      type: 'integration',
+      action: 'disconnected',
+      service: 'LinkedIn',
+      timestamp: new Date(Date.now() - 1200000).toISOString(),
+      status: 'warning'
+    },
+    {
+      id: 5,
+      type: 'webhook',
+      action: 'created',
+      service: 'DocuSign',
+      timestamp: new Date(Date.now() - 1500000).toISOString(),
+      status: 'success'
+    }
+  ];
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'success':
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'error':
+        return <AlertCircle className="h-4 w-4 text-red-500" />;
+      case 'warning':
+        return <Clock className="h-4 w-4 text-yellow-500" />;
+      default:
+        return <Activity className="h-4 w-4 text-blue-500" />;
+    }
+  };
+
+  const getActionText = (activity) => {
+    const actionMap = {
+      connected: 'Connected to',
+      disconnected: 'Disconnected from',
+      triggered: 'Webhook triggered for',
+      sync_failed: 'Sync failed for',
+      created: 'Created webhook for'
+    };
+    return `${actionMap[activity.action] || activity.action} ${activity.service}`;
+  };
 
   const createIntegrationMutation = useMutation({
     mutationFn: (data) => base44.entities.Integration.create(data),
@@ -301,13 +396,6 @@ export default function Integrations() {
     }, 2000);
   };
 
-  const handleToggleSync = (integration) => {
-    updateIntegrationMutation.mutate({
-      id: integration.id,
-      data: { sync_enabled: !integration.sync_enabled }
-    });
-  };
-
   const handleDisconnect = (integrationId) => {
     if (confirm("Are you sure you want to disconnect this integration?")) {
       deleteIntegrationMutation.mutate(integrationId);
@@ -322,74 +410,201 @@ export default function Integrations() {
     );
   };
 
-  return (
-    <div className="p-6 lg:p-8 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-          <Zap className="w-8 h-8 text-indigo-500" />
-          Integrations Marketplace
-        </h1>
-        <p className="text-gray-600 mt-1">Connect 20+ tools and automate your workflow</p>
+  const OverviewTab = () => (
+    <div className="space-y-6">
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="border-none shadow-lg bg-gradient-to-br from-blue-500 to-indigo-500">
+          <CardContent className="p-6">
+            <div className="flex items-center">
+              <Zap className="h-8 w-8 text-white" />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-white/80">Total Integrations</p>
+                <p className="text-2xl font-bold text-white">{integrationStats.totalIntegrations}</p>
+                <p className="text-xs text-white/60">
+                  {integrationStats.activeIntegrations} active
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="border-none shadow-lg bg-gradient-to-br from-purple-500 to-pink-500">
+          <CardContent className="p-6">
+            <div className="flex items-center">
+              <Webhook className="h-8 w-8 text-white" />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-white/80">Webhooks</p>
+                <p className="text-2xl font-bold text-white">{integrationStats.totalWebhooks}</p>
+                <p className="text-xs text-white/60">
+                  {integrationStats.activeWebhooks} active
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="border-none shadow-lg bg-gradient-to-br from-green-500 to-emerald-500">
+          <CardContent className="p-6">
+            <div className="flex items-center">
+              <Server className="h-8 w-8 text-white" />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-white/80">API Connections</p>
+                <p className="text-2xl font-bold text-white">{integrationStats.totalAPIs}</p>
+                <p className="text-xs text-white/60">
+                  {integrationStats.activeAPIs} active
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="border-none shadow-lg bg-gradient-to-br from-orange-500 to-red-500">
+          <CardContent className="p-6">
+            <div className="flex items-center">
+              <TrendingUp className="h-8 w-8 text-white" />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-white/80">Total Syncs</p>
+                <p className="text-2xl font-bold text-white">{integrationStats.totalSyncs.toLocaleString()}</p>
+                <p className="text-xs text-white/60">
+                  {integrationStats.syncErrors} errors
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="border-none shadow-lg bg-gradient-to-br from-indigo-500 to-indigo-600">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-white/20">
-                <Zap className="w-5 h-5 text-white" />
+      {/* Status Overview */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <IntegrationHealth
+          stats={integrationStats}
+          onRefresh={() => queryClient.invalidateQueries({ queryKey: ['integrations'] })}
+        />
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Activity className="h-5 w-5 mr-2" />
+              System Health
+            </CardTitle>
+            <CardDescription>
+              Overall integration system status and performance
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">System Uptime</span>
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span className="text-sm font-bold">{integrationStats.uptime}%</span>
               </div>
-              <div>
-                <p className="text-sm text-white/80">Available</p>
-                <p className="text-2xl font-bold text-white">{INTEGRATION_CATALOG.length}</p>
-              </div>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Active Integrations</span>
+              <Badge variant="default">
+                {integrationStats.activeIntegrations}/{integrationStats.totalIntegrations}
+              </Badge>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Failed Integrations</span>
+              <Badge variant={integrationStats.failedIntegrations > 0 ? "destructive" : "secondary"}>
+                {integrationStats.failedIntegrations}
+              </Badge>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Last Sync</span>
+              <span className="text-sm text-muted-foreground">
+                {new Date(integrationStats.lastSync).toLocaleString()}
+              </span>
+            </div>
+            
+            <div className="pt-4">
+              <Button className="w-full" variant="outline">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh All Integrations
+              </Button>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-none shadow-lg bg-gradient-to-br from-green-500 to-green-600">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-white/20">
-                <Check className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <p className="text-sm text-white/80">Connected</p>
-                <p className="text-2xl font-bold text-white">
-                  {integrations.filter(i => i.user_email === currentUser?.email && i.status === 'Active').length}
-                </p>
-              </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Clock className="h-5 w-5 mr-2" />
+              Recent Activity
+            </CardTitle>
+            <CardDescription>
+              Latest integration events and activities
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {recentActivity.map((activity) => (
+                <div key={activity.id} className="flex items-center space-x-3 p-3 rounded-lg bg-gray-50">
+                  {getStatusIcon(activity.status)}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">
+                      {getActionText(activity)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(activity.timestamp).toLocaleString()}
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="text-xs capitalize">
+                    {activity.type}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+            
+            <div className="pt-4">
+              <Button variant="ghost" className="w-full text-sm">
+                View All Activity
+              </Button>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-none shadow-lg bg-gradient-to-br from-purple-500 to-purple-600">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-white/20">
-                <RefreshCw className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <p className="text-sm text-white/80">Auto-Syncing</p>
-                <p className="text-2xl font-bold text-white">
-                  {integrations.filter(i => i.sync_enabled && i.status === 'Active').length}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-none shadow-lg bg-gradient-to-br from-amber-500 to-amber-600">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-white/20">
-                <Settings className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <p className="text-sm text-white/80">Categories</p>
-                <p className="text-2xl font-bold text-white">10</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      </div>
+
+      {/* Quick Actions */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Quick Actions</CardTitle>
+          <CardDescription>
+            Common integration management tasks
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Button className="h-20 flex-col space-y-2" variant="outline">
+              <Plus className="h-6 w-6" />
+              <span>Add Integration</span>
+            </Button>
+            <Button className="h-20 flex-col space-y-2" variant="outline">
+              <Webhook className="h-6 w-6" />
+              <span>Create Webhook</span>
+            </Button>
+            <Button className="h-20 flex-col space-y-2" variant="outline">
+              <Settings className="h-6 w-6" />
+              <span>Manage APIs</span>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const IntegrationsMarketplace = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <Zap className="w-6 h-6 text-indigo-500" />
+          Integrations Marketplace
+        </h2>
+        <p className="text-gray-600 mt-1">Connect 20+ tools and automate your workflow</p>
       </div>
 
       {/* Integration Cards Grid */}
@@ -475,6 +690,66 @@ export default function Integrations() {
           );
         })}
       </div>
+    </div>
+  );
+
+  return (
+    <div className="p-6 lg:p-8 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Integrations</h1>
+          <p className="text-muted-foreground">
+            Manage all your third-party integrations, webhooks, and API connections
+          </p>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Button variant="outline">
+            <Settings className="h-4 w-4 mr-2" />
+            Settings
+          </Button>
+          <Button>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Integration
+          </Button>
+        </div>
+      </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="overview" className="flex items-center space-x-2">
+            <Activity className="h-4 w-4" />
+            <span>Overview</span>
+          </TabsTrigger>
+          <TabsTrigger value="integrations" className="flex items-center space-x-2">
+            <Zap className="h-4 w-4" />
+            <span>Integrations</span>
+          </TabsTrigger>
+          <TabsTrigger value="webhooks" className="flex items-center space-x-2">
+            <Webhook className="h-4 w-4" />
+            <span>Webhooks</span>
+          </TabsTrigger>
+          <TabsTrigger value="apis" className="flex items-center space-x-2">
+            <Server className="h-4 w-4" />
+            <span>APIs</span>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-4">
+          <OverviewTab />
+        </TabsContent>
+
+        <TabsContent value="integrations" className="space-y-4">
+          <IntegrationsMarketplace />
+        </TabsContent>
+
+        <TabsContent value="webhooks" className="space-y-4">
+          <WebhookManager />
+        </TabsContent>
+
+        <TabsContent value="apis" className="space-y-4">
+          <APIIntegrations />
+        </TabsContent>
+      </Tabs>
 
       {/* Connect Dialog */}
       <Dialog open={showConnectDialog} onOpenChange={setShowConnectDialog}>

@@ -15,10 +15,22 @@ import {
   Clock,
   FileText,
   Package,
-  Activity as ActivityIcon
+  Activity as ActivityIcon,
+  Filter,
+  Calendar,
+  DollarSign,
+  Star
 } from "lucide-react";
 import { createPageUrl } from "@/utils";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const ENTITY_CONFIG = {
   Lead: { 
@@ -90,6 +102,9 @@ export default function GlobalSearch({ open, onOpenChange }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [recentItems, setRecentItems] = useState([]);
+  const [selectedEntityType, setSelectedEntityType] = useState("all");
+  const [sortBy, setSortBy] = useState("relevance");
+  const [showFilters, setShowFilters] = useState(false);
 
   // Fetch all entities
   const { data: leads = [] } = useQuery({
@@ -152,6 +167,9 @@ export default function GlobalSearch({ open, onOpenChange }) {
     const results = [];
 
     const searchInEntity = (items, entityType) => {
+      // Filter by entity type if selected
+      if (selectedEntityType !== "all" && selectedEntityType !== entityType) return;
+      
       const config = ENTITY_CONFIG[entityType];
       if (!config) return;
 
@@ -162,10 +180,22 @@ export default function GlobalSearch({ open, onOpenChange }) {
         });
 
         if (matches) {
+          // Calculate relevance score
+          let relevanceScore = 0;
+          config.searchFields.forEach(field => {
+            const value = item[field];
+            if (value && String(value).toLowerCase().includes(query)) {
+              const fieldValue = String(value).toLowerCase();
+              if (fieldValue.startsWith(query)) relevanceScore += 3;
+              else if (fieldValue.includes(query)) relevanceScore += 1;
+            }
+          });
+
           results.push({
             ...item,
             entityType,
             config,
+            relevanceScore,
           });
         }
       });
@@ -179,8 +209,28 @@ export default function GlobalSearch({ open, onOpenChange }) {
     searchInEntity(quotes, 'Quote');
     searchInEntity(products, 'Product');
 
-    return results.slice(0, 8);
-  }, [searchQuery, leads, contacts, accounts, deals, tasks, quotes, products]);
+    // Sort results based on selected sort option
+    results.sort((a, b) => {
+      switch (sortBy) {
+        case 'relevance':
+          return b.relevanceScore - a.relevanceScore;
+        case 'name':
+          const nameA = a.config.displayName(a).toLowerCase();
+          const nameB = b.config.displayName(b).toLowerCase();
+          return nameA.localeCompare(nameB);
+        case 'type':
+          return a.entityType.localeCompare(b.entityType);
+        case 'recent':
+          const dateA = new Date(a.updated_date || a.created_date || 0);
+          const dateB = new Date(b.updated_date || b.created_date || 0);
+          return dateB - dateA;
+        default:
+          return b.relevanceScore - a.relevanceScore;
+      }
+    });
+
+    return results.slice(0, 12);
+  }, [searchQuery, leads, contacts, accounts, deals, tasks, quotes, products, selectedEntityType, sortBy]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -248,6 +298,8 @@ export default function GlobalSearch({ open, onOpenChange }) {
 
   const ResultItem = ({ item, isSelected }) => {
     const Icon = item.config.icon;
+    const relevanceStars = Math.min(Math.floor(item.relevanceScore / 2), 3);
+    
     return (
       <div
         className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all ${
@@ -259,16 +311,32 @@ export default function GlobalSearch({ open, onOpenChange }) {
           <Icon className={`w-5 h-5 ${item.config.color}`} />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-gray-900 truncate">
-            {item.config.displayName(item)}
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="font-medium text-gray-900 truncate">
+              {item.config.displayName(item)}
+            </p>
+            {relevanceStars > 0 && (
+              <div className="flex">
+                {[...Array(relevanceStars)].map((_, i) => (
+                  <Star key={i} className="w-3 h-3 text-yellow-400 fill-current" />
+                ))}
+              </div>
+            )}
+          </div>
           <p className="text-sm text-gray-500 truncate">
             {item.config.subtitle(item)}
           </p>
         </div>
-        <Badge variant="outline" className="text-xs">
-          {item.entityType}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-xs">
+            {item.entityType}
+          </Badge>
+          {item.updated_date && (
+            <span className="text-xs text-gray-400">
+              {new Date(item.updated_date).toLocaleDateString()}
+            </span>
+          )}
+        </div>
       </div>
     );
   };
@@ -277,7 +345,7 @@ export default function GlobalSearch({ open, onOpenChange }) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl p-0 gap-0 top-[20%]">
         <div className="p-4 border-b">
-          <div className="relative">
+          <div className="relative mb-3">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <Input
               placeholder="Search leads, contacts, accounts, deals..."
@@ -286,7 +354,47 @@ export default function GlobalSearch({ open, onOpenChange }) {
               className="pl-10 text-lg border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
               autoFocus
             />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowFilters(!showFilters)}
+              className="absolute right-2 top-1/2 transform -translate-y-1/2"
+            >
+              <Filter className="w-4 h-4" />
+            </Button>
           </div>
+          
+          {showFilters && (
+            <div className="flex gap-3 pt-3 border-t">
+              <Select value={selectedEntityType} onValueChange={setSelectedEntityType}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="All types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="Lead">Leads</SelectItem>
+                  <SelectItem value="Contact">Contacts</SelectItem>
+                  <SelectItem value="Account">Accounts</SelectItem>
+                  <SelectItem value="Deal">Deals</SelectItem>
+                  <SelectItem value="Task">Tasks</SelectItem>
+                  <SelectItem value="Quote">Quotes</SelectItem>
+                  <SelectItem value="Product">Products</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="relevance">Relevance</SelectItem>
+                  <SelectItem value="name">Name</SelectItem>
+                  <SelectItem value="type">Type</SelectItem>
+                  <SelectItem value="recent">Recently Updated</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
 
         <div className="max-h-[400px] overflow-y-auto">

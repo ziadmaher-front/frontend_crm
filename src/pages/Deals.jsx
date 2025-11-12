@@ -1,24 +1,27 @@
-
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { DealService } from "@/services/dealService";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/components/ui/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Plus,
+  Edit,
   TrendingUp,
   DollarSign,
   Calendar,
-  Edit,
-  LayoutList,
-  LayoutGrid,
   User,
   Briefcase,
-  Building2,
+  LayoutGrid,
   Users as UsersIcon,
-  Table as TableIcon
+  Search,
+  Filter,
+  BarChart3,
+  Target,
+  Trash2,
 } from "lucide-react";
 import {
   Dialog,
@@ -38,6 +41,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
 import BulkOperations from "../components/BulkOperations";
+import { PageSkeleton } from "@/components/ui/loading-states";
+import { createPageUrl } from "@/utils";
 
 const STAGES = ["Prospecting", "Qualification", "Proposal", "Negotiation", "Closed Won", "Closed Lost"];
 const CURRENCIES = ["USD", "EGP", "AED", "SAR"];
@@ -48,22 +53,20 @@ const CURRENCY_SYMBOLS = {
   SAR: "﷼"
 };
 
-// Helper function to generate URLs based on page name
-// This is a placeholder; in a real app, this would typically come from a routing library or global config.
-const createPageUrl = (pageName) => {
-  switch (pageName) {
-    case 'DealsKanban':
-      return '/deals/kanban'; // Assuming /deals/kanban is the path for the Kanban view
-    default:
-      return '/';
-  }
-};
+// Use shared utility for building page URLs
 
 export default function Deals() {
   const [view, setView] = useState("kanban");
   const [showDialog, setShowDialog] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [showForecast, setShowForecast] = useState(false);
   const [editingDeal, setEditingDeal] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterStage, setFilterStage] = useState("all");
+  const [filterOwner, setFilterOwner] = useState("all");
+  const [sortBy, setSortBy] = useState("created_date");
+  const [sortOrder, setSortOrder] = useState("desc");
   const [formData, setFormData] = useState({
     deal_name: "",
     account_id: "",
@@ -83,6 +86,7 @@ export default function Deals() {
   });
 
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   // Load view preference and current user
   useEffect(() => {
@@ -94,78 +98,134 @@ export default function Deals() {
     }).catch(() => {});
   }, []);
 
-  // Save view preference
-  const handleViewChange = async (newView) => {
-    setView(newView);
-    if (currentUser) {
-      const updatedPreferences = {
-        ...currentUser.ui_preferences,
-        deals_view: newView
+  // Enhanced queries using DealService
+  const { data: deals = [], isLoading: dealsLoading } = useQuery({
+    queryKey: ['deals', { searchTerm, filterStage, filterOwner, sortBy, sortOrder }],
+    queryFn: async () => {
+      const filters = {
+        stage: filterStage || undefined,
+        owner_email: filterOwner || undefined,
+        sortBy,
+        sortOrder
       };
-      // Optimistically update currentUser state to reflect new preferences immediately
-      // This is optional but can improve perceived responsiveness.
-      // The backend call ensures persistence.
-      setCurrentUser(prevUser => ({
-        ...prevUser,
-        ui_preferences: updatedPreferences
-      }));
-
-      try {
-        await base44.auth.updateMe({ ui_preferences: updatedPreferences });
-      } catch (error) {
-        console.error("Failed to save view preference:", error);
-        // Optionally revert UI if update failed, or show error message
-        // For simplicity, we're not reverting here as it's a minor preference.
+      
+      if (searchTerm) {
+        return await DealService.searchDeals(searchTerm, filters);
+      } else {
+        return await DealService.getDeals(filters);
       }
-    }
-  };
+    },
+  });
 
-  const { data: deals = [] } = useQuery({
-    queryKey: ['deals'],
-    queryFn: () => base44.entities.Deal.list('-created_date'),
+  // Pipeline data for analytics
+  const { data: pipelineData, isLoading: pipelineLoading } = useQuery({
+    queryKey: ['pipeline-data'],
+    queryFn: () => DealService.getPipelineData(),
+    enabled: showAnalytics,
+  });
+
+  // Deal analytics
+  const { data: analytics, isLoading: analyticsLoading } = useQuery({
+    queryKey: ['deal-analytics'],
+    queryFn: () => DealService.getDealAnalytics('month'),
+    enabled: showAnalytics,
+  });
+
+  // Forecast data
+  const { data: forecast, isLoading: forecastLoading } = useQuery({
+    queryKey: ['deal-forecast'],
+    queryFn: () => DealService.getForecast('quarter'),
+    enabled: showForecast,
   });
 
   const { data: accounts = [] } = useQuery({
     queryKey: ['accounts'],
-    queryFn: () => base44.entities.Account.list(),
+    queryFn: () => base44.entities.accounts.getAll(),
   });
 
   const { data: contacts = [] } = useQuery({
     queryKey: ['contacts'],
-    queryFn: () => base44.entities.Contact.list(),
+    queryFn: () => base44.entities.contacts.getAll(),
   });
 
   const { data: leads = [] } = useQuery({
     queryKey: ['leads'],
-    queryFn: () => base44.entities.Lead.list(),
+    queryFn: () => base44.entities.leads.getAll(),
+  });
+
+  const { data: productLines = [] } = useQuery({
+    queryKey: ['product-lines'],
+    queryFn: () => base44.entities.product_lines.getAll(),
   });
 
   const { data: users = [] } = useQuery({
     queryKey: ['users'],
-    queryFn: () => base44.entities.User.list(),
+    queryFn: () => base44.entities.users.getAll(),
   });
 
-  const { data: productLines = [] } = useQuery({
-    queryKey: ['productLines'],
-    queryFn: () => base44.entities.ProductLine.list(),
-  });
-
+  // Mutations
   const createMutation = useMutation({
-    mutationFn: (data) => base44.entities.Deal.create(data),
-    onSuccess: () => {
+    mutationFn: (data) => DealService.createDeal(data),
+    onSuccess: (newDeal) => {
       queryClient.invalidateQueries({ queryKey: ['deals'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-data'] });
+      queryClient.invalidateQueries({ queryKey: ['deal-analytics'] });
       setShowDialog(false);
       resetForm();
+      toast({
+        title: "Success",
+        description: `Deal "${newDeal.deal_name}" created successfully`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create deal",
+        variant: "destructive",
+      });
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Deal.update(id, data),
-    onSuccess: () => {
+    mutationFn: ({ id, data }) => DealService.updateDeal(id, data),
+    onSuccess: (updatedDeal) => {
       queryClient.invalidateQueries({ queryKey: ['deals'] });
+      queryClient.invalidateQueries({ queryKey: ['pipelineData'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
       setShowDialog(false);
       setEditingDeal(null);
       resetForm();
+      toast({
+        title: "Success",
+        description: `Deal "${updatedDeal.deal_name}" updated successfully`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update deal",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (dealId) => DealService.deleteDeal(dealId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['deals'] });
+      queryClient.invalidateQueries({ queryKey: ['pipelineData'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+      toast({
+        title: "Success",
+        description: "Deal deleted successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete deal",
+        variant: "destructive",
+      });
     },
   });
 
@@ -214,7 +274,6 @@ export default function Deals() {
       currency: deal.currency || "USD",
       stage: deal.stage || "Prospecting",
       probability: deal.probability || 50,
-      // Preserve date formatting for input type="date"
       expected_close_date: deal.expected_close_date ? format(new Date(deal.expected_close_date), 'yyyy-MM-dd') : "",
       lead_source: deal.lead_source || "Website",
       deal_type: deal.deal_type || "New Business",
@@ -227,673 +286,312 @@ export default function Deals() {
   const handleStageChange = async (dealId, newStage) => {
     const deal = deals.find((d) => d.id === dealId);
     if (deal) {
-      await updateMutation.mutateAsync({
-        id: dealId,
+      updateMutation.mutate({ 
+        id: dealId, 
         data: { ...deal, stage: newStage }
       });
     }
   };
 
-  const handleOwnerChange = (email) => {
-    const owner = users.find(u => u.email === email);
-    setFormData({
-      ...formData,
-      owner_email: email,
-      product_line_id: owner?.product_line_id || formData.product_line_id,
-      currency: owner?.default_currency || formData.currency,
-    });
+  const handleDelete = (dealId) => {
+    if (window.confirm("Are you sure you want to delete this deal?")) {
+      deleteMutation.mutate(dealId);
+    }
   };
 
-  const getAccountName = (accountId) => {
-    const account = accounts.find((a) => a.id === accountId);
-    return account?.company_name || "No Account";
-  };
+  const filteredDeals = deals.filter((deal) => {
+    const matchesSearch = !searchTerm || 
+      deal.deal_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      deal.account_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      deal.contact_name?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesStage = filterStage === "all" || deal.stage === filterStage;
+    const matchesOwner = filterOwner === "all" || deal.owner_email === filterOwner;
+    
+    return matchesSearch && matchesStage && matchesOwner;
+  });
 
-  const getContactName = (contactId) => {
-    const contact = contacts.find((c) => c.id === contactId);
-    return contact ? `${contact.first_name} ${contact.last_name}` : null;
-  };
+  const groupedDeals = STAGES.reduce((acc, stage) => {
+    acc[stage] = filteredDeals.filter((deal) => deal.stage === stage);
+    return acc;
+  }, {});
 
-  const getLeadName = (leadId) => {
-    const lead = leads.find((l) => l.id === leadId);
-    return lead ? `${lead.first_name} ${lead.last_name}` : null;
-  };
+  const totalValue = filteredDeals.reduce((sum, deal) => sum + (deal.amount || 0), 0);
+  const avgDealSize = filteredDeals.length > 0 ? totalValue / filteredDeals.length : 0;
+  const conversionRate = filteredDeals.length > 0 ? 
+    (filteredDeals.filter(d => d.stage === "Closed Won").length / filteredDeals.length) * 100 : 0;
 
-  const getUserName = (email) => {
-    const user = users.find((u) => u.email === email);
-    return user?.full_name || email;
-  };
-
-  const getProductLineName = (id) => {
-    const pl = productLines.find((p) => p.id === id);
-    return pl?.name || null;
-  };
-
-  // Filter contacts by selected account
-  const filteredContacts = formData.account_id
-    ? contacts.filter(c => c.account_id === formData.account_id)
-    : contacts;
-
-  // Filter leads by selected account
-  const filteredLeads = formData.account_id
-    ? leads.filter(l => l.account_id === formData.account_id)
-    : leads;
-
-  const totalDealsValue = deals.reduce((sum, deal) => sum + (deal.amount || 0), 0);
-  const openDeals = deals.filter(d => !['Closed Won', 'Closed Lost'].includes(d.stage));
-  const wonDeals = deals.filter(d => d.stage === 'Closed Won');
-  const wonDealsValue = wonDeals.reduce((sum, deal) => sum + (deal.amount || 0), 0);
-
-  const stageColors = {
-    'Prospecting': 'from-indigo-400 to-indigo-600',
-    'Qualification': 'from-purple-400 to-purple-600',
-    'Proposal': 'from-blue-400 to-blue-600',
-    'Negotiation': 'from-amber-400 to-amber-600',
-    'Closed Won': 'from-emerald-400 to-emerald-600',
-    'Closed Lost': 'from-gray-400 to-gray-600',
-  };
-
-  const DealCard = ({ deal, isSelected, handleSelectRecord }) => (
-    <Card className={`mb-3 border-none shadow-md hover:shadow-lg transition-all cursor-pointer group ${
-      isSelected ? 'ring-2 ring-indigo-500' : ''
-    }`}>
-      <CardContent className="p-4">
-        <div className="flex justify-between items-start mb-2">
-          <div className="flex items-start gap-2 flex-1">
-            <input
-              type="checkbox"
-              checked={isSelected}
-              onChange={() => handleSelectRecord(deal.id)}
-              className="mt-0.5 w-4 h-4 text-indigo-600 rounded"
-              onClick={(e) => e.stopPropagation()}
-            />
-            <h4 className="font-semibold text-sm flex-1">{deal.deal_name}</h4>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleEdit(deal);
-            }}
-          >
-            <Edit className="w-3 h-3" />
-          </Button>
-        </div>
-        <p className="text-xs text-gray-500 mb-2">{getAccountName(deal.account_id)}</p>
-        {deal.contact_id && getContactName(deal.contact_id) && (
-          <div className="flex items-center gap-1 text-xs text-gray-500 mb-1">
-            <UsersIcon className="w-3 h-3" />
-            {getContactName(deal.contact_id)}
-          </div>
-        )}
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-lg font-bold text-green-600">
-            {CURRENCY_SYMBOLS[deal.currency || 'USD']}{deal.amount?.toLocaleString() || 0}
-          </span>
-          {deal.probability && (
-            <Badge variant="secondary" className="text-xs">
-              {deal.probability}%
-            </Badge>
-          )}
-        </div>
-        {deal.owner_email && (
-          <div className="flex items-center gap-1 text-xs text-gray-600 mb-1">
-            <User className="w-3 h-3" />
-            {getUserName(deal.owner_email)}
-          </div>
-        )}
-        {deal.product_line_id && getProductLineName(deal.product_line_id) && (
-          <Badge className="bg-indigo-100 text-indigo-800 text-xs mb-2">
-            <Briefcase className="w-3 h-3 mr-1" />
-            {getProductLineName(deal.product_line_id)}
-          </Badge>
-        )}
-        {deal.expected_close_date && (
-          <div className="flex items-center gap-1 text-xs text-gray-500 mt-2">
-            <Calendar className="w-3 h-3" />
-            {format(new Date(deal.expected_close_date), 'MMM d, yyyy')}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
+  if (dealsLoading) {
+    return <PageSkeleton />;
+  }
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-            <TrendingUp className="w-8 h-8 text-green-500" />
-            Deals Pipeline
-          </h1>
-          <p className="text-gray-600 mt-1">Track and manage sales opportunities</p>
+          <h1 className="text-3xl font-bold tracking-tight">Deals</h1>
+          <p className="text-muted-foreground">
+            Manage your sales pipeline and track deal progress
+          </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2">
           <Button
-            variant="outline"
-            onClick={() => window.location.href = createPageUrl('DealsKanban')}
-            className="gap-2"
+            variant={showAnalytics ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowAnalytics(!showAnalytics)}
           >
-            <LayoutGrid className="w-4 h-4" />
-            Kanban View
+            <BarChart3 className="h-4 w-4 mr-2" />
+            Analytics
           </Button>
           <Button
-            onClick={() => {
-              setEditingDeal(null);
-              resetForm();
-              setShowDialog(true);
-            }}
-            className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-lg"
+            variant={showForecast ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowForecast(!showForecast)}
           >
-            <Plus className="w-4 h-4 mr-2" />
-            Add New Deal
+            <Target className="h-4 w-4 mr-2" />
+            Forecast
+          </Button>
+          <Button onClick={() => setShowDialog(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Deal
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="border-none shadow-lg bg-gradient-to-br from-indigo-500 to-indigo-600">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-white/20 backdrop-blur-sm">
-                <TrendingUp className="w-6 h-6 text-white" />
+      {/* Filters and Search */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="Search deals..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
               </div>
-              <div>
-                <p className="text-sm font-medium text-white/80">Total Pipeline</p>
-                <p className="text-3xl font-bold text-white">${totalDealsValue.toLocaleString()}</p>
-              </div>
+            </div>
+            <Select value={filterStage} onValueChange={setFilterStage}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Filter by stage" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Stages</SelectItem>
+                {STAGES.map((stage) => (
+                  <SelectItem key={stage} value={stage}>
+                    {stage}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterOwner} onValueChange={setFilterOwner}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Filter by owner" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Owners</SelectItem>
+                {users.map((user) => (
+                  <SelectItem key={user.id} value={user.email}>
+                    {user.name || user.email}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Deals</CardTitle>
+            <Briefcase className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{filteredDeals.length}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Value</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {CURRENCY_SYMBOLS.USD}{totalValue.toLocaleString()}
             </div>
           </CardContent>
         </Card>
-        <Card className="border-none shadow-lg bg-gradient-to-br from-emerald-500 to-emerald-600">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-white/20 backdrop-blur-sm">
-                <DollarSign className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-white/80">Won Deals</p>
-                <p className="text-3xl font-bold text-white">${wonDealsValue.toLocaleString()}</p>
-              </div>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Avg Deal Size</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {CURRENCY_SYMBOLS.USD}{avgDealSize.toLocaleString()}
             </div>
           </CardContent>
         </Card>
-        <Card className="border-none shadow-lg bg-gradient-to-br from-purple-500 to-purple-600">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-white/20 backdrop-blur-sm">
-                <TrendingUp className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-white/80">Open Deals</p>
-                <p className="text-3xl font-bold text-white">{openDeals.length}</p>
-              </div>
-            </div>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Win Rate</CardTitle>
+            <Target className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{conversionRate.toFixed(1)}%</div>
           </CardContent>
         </Card>
       </div>
 
-      {view === "kanban" && (
-        <BulkOperations
-          entityName="Deal"
-          records={deals}
-          onRefresh={() => queryClient.invalidateQueries({ queryKey: ['deals'] })}
-        >
-          {({ selectedRecords, isSelected, handleSelectRecord }) => (
-            <div className="overflow-x-auto pb-4">
-              <div className="flex gap-4 min-w-max">
-                {STAGES.map((stage) => {
-                  const stageDeals = deals.filter((d) => d.stage === stage);
-                  const stageValue = stageDeals.reduce((sum, d) => sum + (d.amount || 0), 0);
-
-                  return (
-                    <div key={stage} className="w-80 flex-shrink-0">
-                      <Card className={`border-none shadow-lg bg-gradient-to-br ${stageColors[stage]} text-white`}>
-                        <CardHeader className="pb-3">
-                          <CardTitle className="text-sm font-semibold flex justify-between items-center">
-                            <span>{stage}</span>
-                            <Badge variant="secondary" className="bg-white/20 text-white border-none">
-                              {stageDeals.length}
-                            </Badge>
-                          </CardTitle>
-                          <p className="text-xs opacity-90">${stageValue.toLocaleString()}</p>
-                        </CardHeader>
-                      </Card>
-                      <div className="mt-4 space-y-2">
-                        {stageDeals.map((deal) => (
-                          <DealCard
-                            key={deal.id}
-                            deal={deal}
-                            isSelected={isSelected(deal.id)}
-                            handleSelectRecord={handleSelectRecord}
-                          />
-                        ))}
+      {/* Kanban View */}
+      <div className="grid grid-cols-1 lg:grid-cols-6 gap-4">
+        {STAGES.map((stage) => (
+          <Card key={stage} className="min-h-[400px]">
+            <CardHeader>
+              <CardTitle className="text-sm font-medium flex items-center justify-between">
+                {stage}
+                <Badge variant="secondary">{groupedDeals[stage]?.length || 0}</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {groupedDeals[stage]?.map((deal) => (
+                <Card key={deal.id} className="p-3 cursor-pointer hover:shadow-md transition-shadow">
+                  <div className="space-y-2">
+                    <div className="font-medium text-sm">{deal.deal_name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {deal.account_name || 'No Account'}
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium text-sm">
+                        {CURRENCY_SYMBOLS[deal.currency || 'USD']}{(deal.amount || 0).toLocaleString()}
+                      </span>
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleEdit(deal)}
+                        >
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDelete(deal.id)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </BulkOperations>
-      )}
-
-      {view === "list" && (
-        <BulkOperations
-          entityName="Deal"
-          records={deals}
-          onRefresh={() => queryClient.invalidateQueries({ queryKey: ['deals'] })}
-        >
-          {({ selectedRecords, isSelected, handleSelectRecord }) => (
-            <div className="space-y-2">
-              {deals.map((deal) => (
-                <Card key={deal.id} className={`border-none shadow-md hover:shadow-lg transition-all cursor-pointer ${
-                  isSelected(deal.id) ? 'ring-2 ring-indigo-500' : ''
-                }`}>
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-4">
-                      <input
-                        type="checkbox"
-                        checked={isSelected(deal.id)}
-                        onChange={() => handleSelectRecord(deal.id)}
-                        className="w-4 h-4 text-indigo-600 rounded"
-                      />
-                      {/* Changed to simplified grid-cols-6 from responsive grid-cols */}
-                      <div className="flex-1 grid grid-cols-6 gap-4 items-center">
-                        {/* Deal Name & Account */}
-                        <div>
-                          <p className="font-semibold">{deal.deal_name}</p>
-                          <p className="text-xs text-gray-500">{getAccountName(deal.account_id)}</p>
-                        </div>
-                        {/* Owner */}
-                        <div>
-                          <p className="text-sm text-gray-600">{getUserName(deal.owner_email)}</p>
-                        </div>
-                        {/* Amount */}
-                        <div>
-                          <p className="text-lg font-bold text-green-600">
-                            {CURRENCY_SYMBOLS[deal.currency || 'USD']}{deal.amount?.toLocaleString() || 0}
-                          </p>
-                        </div>
-                        {/* Stage */}
-                        <div>
-                          <Select
-                            value={deal.stage}
-                            onValueChange={(value) => handleStageChange(deal.id, value)}
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {STAGES.map((stage) => (
-                                <SelectItem key={stage} value={stage}>{stage}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        {/* Probability */}
-                        <div>
-                          <Badge variant="secondary">{deal.probability}%</Badge>
-                        </div>
-                        {/* Actions */}
-                        <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => handleEdit(deal)}>
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
+                    <div className="text-xs text-muted-foreground">
+                      {deal.probability}% • {deal.owner_name || deal.owner_email}
                     </div>
-                  </CardContent>
+                  </div>
                 </Card>
               ))}
-            </div>
-          )}
-        </BulkOperations>
-      )}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
-      {view === "table" && (
-        <BulkOperations
-          entityName="Deal"
-          records={deals}
-          onRefresh={() => queryClient.invalidateQueries({ queryKey: ['deals'] })}
-        >
-          {({ selectedRecords, isSelected, handleSelectRecord }) => (
-            <Card className="border-none shadow-lg">
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 border-b">
-                      <tr>
-                        <th className="px-6 py-3 text-left">
-                          <input
-                            type="checkbox"
-                            checked={selectedRecords.length === deals.length && deals.length > 0}
-                            onChange={() => {
-                              if (selectedRecords.length === deals.length) {
-                                // If all are selected, deselect all.
-                                selectedRecords.forEach(id => handleSelectRecord(id));
-                              } else {
-                                // Select all unselected deals.
-                                deals.filter(d => !isSelected(d.id)).forEach(d => handleSelectRecord(d.id));
-                              }
-                            }}
-                            className="w-4 h-4 text-indigo-600 rounded"
-                          />
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Deal Name</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Account</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Owner</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stage</th>
-                        {/* Restored Probability column header */}
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Probability</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Close Date</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {deals.map((deal) => (
-                        <tr key={deal.id} className={`hover:bg-gray-50 ${isSelected(deal.id) ? 'bg-indigo-50' : ''}`}>
-                          <td className="px-6 py-4">
-                            <input
-                              type="checkbox"
-                              checked={isSelected(deal.id)}
-                              onChange={() => handleSelectRecord(deal.id)}
-                              className="w-4 h-4 text-indigo-600 rounded"
-                            />
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap font-medium">{deal.deal_name}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                            {getAccountName(deal.account_id)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                            {getUserName(deal.owner_email)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap font-semibold text-green-600">
-                            {CURRENCY_SYMBOLS[deal.currency || 'USD']}{deal.amount?.toLocaleString() || 0}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <Select
-                              value={deal.stage}
-                              onValueChange={(value) => handleStageChange(deal.id, value)}
-                            >
-                              <SelectTrigger className="w-40">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {STAGES.map((stage) => (
-                                  <SelectItem key={stage} value={stage}>{stage}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </td>
-                          {/* Restored Probability column data */}
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <Badge variant="secondary">{deal.probability}%</Badge>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm">
-                            {deal.expected_close_date ? format(new Date(deal.expected_close_date), 'MMM d, yyyy') : '-'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <Button variant="ghost" size="sm" onClick={() => handleEdit(deal)}>
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </BulkOperations>
-      )}
-
+      {/* Deal Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingDeal ? 'Edit Deal' : 'Add New Deal'}</DialogTitle>
+            <DialogTitle>
+              {editingDeal ? "Edit Deal" : "Create New Deal"}
+            </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="deal_name">Deal Name *</Label>
-              <Input
-                id="deal_name"
-                value={formData.deal_name}
-                onChange={(e) => setFormData({...formData, deal_name: e.target.value})}
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="owner_email">Deal Owner *</Label>
-              <Select
-                value={formData.owner_email}
-                onValueChange={handleOwnerChange}
-                required
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select owner..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {users.map((user) => (
-                    <SelectItem key={user.email} value={user.email}>
-                      {user.full_name} - {user.territory || 'No Territory'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="account_id">Account</Label>
-              <Select
-                value={formData.account_id}
-                onValueChange={(value) => setFormData({...formData, account_id: value, contact_id: "", lead_id: ""})}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select account..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {accounts.map((account) => (
-                    <SelectItem key={account.id} value={account.id}>
-                      {account.company_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="contact_id">Contact</Label>
-                <Select
-                  value={formData.contact_id}
-                  onValueChange={(value) => setFormData({...formData, contact_id: value})}
-                  disabled={!formData.account_id}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select contact..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filteredContacts.map((contact) => (
-                      <SelectItem key={contact.id} value={contact.id}>
-                        {contact.first_name} {contact.last_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="lead_id">Lead (Optional)</Label>
-                <Select
-                  value={formData.lead_id}
-                  onValueChange={(value) => setFormData({...formData, lead_id: value})}
-                  disabled={!formData.account_id}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select lead..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filteredLeads.map((lead) => (
-                      <SelectItem key={lead.id} value={lead.id}>
-                        {lead.first_name} {lead.last_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="product_line_id">Product Line (Auto-configured)</Label>
-              <Select
-                value={formData.product_line_id}
-                onValueChange={(value) => setFormData({...formData, product_line_id: value})}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select product line..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {productLines.map((pl) => (
-                    <SelectItem key={pl.id} value={pl.id}>
-                      {pl.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="amount">Amount *</Label>
+                <Label htmlFor="deal_name">Deal Name *</Label>
                 <Input
-                  id="amount"
-                  type="number"
-                  value={formData.amount}
-                  onChange={(e) => setFormData({...formData, amount: parseFloat(e.target.value) || 0})}
+                  id="deal_name"
+                  value={formData.deal_name}
+                  onChange={(e) => setFormData({ ...formData, deal_name: e.target.value })}
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="currency">Currency (Auto-configured)</Label>
-                <Select
-                  value={formData.currency}
-                  onValueChange={(value) => setFormData({...formData, currency: value})}
-                >
+                <Label htmlFor="amount">Amount</Label>
+                <Input
+                  id="amount"
+                  type="number"
+                  value={formData.amount}
+                  onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="currency">Currency</Label>
+                <Select value={formData.currency} onValueChange={(value) => setFormData({ ...formData, currency: value })}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {CURRENCIES.map((curr) => (
-                      <SelectItem key={curr} value={curr}>
-                        {curr} ({CURRENCY_SYMBOLS[curr]})
+                    {CURRENCIES.map((currency) => (
+                      <SelectItem key={currency} value={currency}>
+                        {currency}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="stage">Stage</Label>
-                <Select value={formData.stage} onValueChange={(value) => setFormData({...formData, stage: value})}>
+                <Select value={formData.stage} onValueChange={(value) => setFormData({ ...formData, stage: value })}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {STAGES.map((stage) => (
-                      <SelectItem key={stage} value={stage}>{stage}</SelectItem>
+                      <SelectItem key={stage} value={stage}>
+                        {stage}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="probability">Probability (%): {formData.probability}</Label>
-                <input
-                  type="range"
+                <Label htmlFor="probability">Probability (%)</Label>
+                <Input
                   id="probability"
+                  type="number"
                   min="0"
                   max="100"
                   value={formData.probability}
-                  onChange={(e) => setFormData({...formData, probability: parseInt(e.target.value)})}
-                  className="w-full"
+                  onChange={(e) => setFormData({ ...formData, probability: parseInt(e.target.value) || 0 })}
                 />
               </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="expected_close_date">Expected Close Date</Label>
                 <Input
                   id="expected_close_date"
                   type="date"
                   value={formData.expected_close_date}
-                  onChange={(e) => setFormData({...formData, expected_close_date: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, expected_close_date: e.target.value })}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="deal_type">Deal Type</Label>
-                <Select value={formData.deal_type} onValueChange={(value) => setFormData({...formData, deal_type: value})}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="New Business">New Business</SelectItem>
-                    <SelectItem value="Existing Business">Existing Business</SelectItem>
-                    <SelectItem value="Renewal">Renewal</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="lead_source">Lead Source</Label>
-              <Select value={formData.lead_source} onValueChange={(value) => setFormData({...formData, lead_source: value})}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Website">Website</SelectItem>
-                  <SelectItem value="Referral">Referral</SelectItem>
-                  <SelectItem value="Cold Call">Cold Call</SelectItem>
-                  <SelectItem value="Social Media">Social Media</SelectItem>
-                  <SelectItem value="Event">Event</SelectItem>
-                  <SelectItem value="Partner">Partner</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="next_step">Next Step</Label>
-              <Input
-                id="next_step"
-                value={formData.next_step}
-                onChange={(e) => setFormData({...formData, next_step: e.target.value})}
-              />
-            </div>
-
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
               <Textarea
                 id="description"
                 value={formData.description}
-                onChange={(e) => setFormData({...formData, description: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={3}
               />
             </div>
-
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setShowDialog(false)}>
                 Cancel
               </Button>
-              <Button type="submit" className="bg-gradient-to-r from-indigo-600 to-purple-600">
-                {editingDeal ? 'Update' : 'Create'} Deal
+              <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+                {editingDeal ? "Update Deal" : "Create Deal"}
               </Button>
             </DialogFooter>
           </form>

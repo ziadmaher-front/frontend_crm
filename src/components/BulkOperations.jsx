@@ -3,6 +3,14 @@ import { base44 } from "@/api/base44Client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
+import { 
+  Tabs, 
+  TabsContent, 
+  TabsList, 
+  TabsTrigger 
+} from "@/components/ui/tabs";
 import {
   MoreHorizontal,
   Trash2,
@@ -17,7 +25,16 @@ import {
   XSquare,
   MessageSquare,
   PhoneCall,
-  Calendar
+  Calendar,
+  Play,
+  Pause,
+  RotateCcw,
+  Filter,
+  Search,
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+  Users
 } from "lucide-react";
 import {
   DropdownMenu,

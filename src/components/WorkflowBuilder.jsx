@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +8,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Plus, 
   Play, 
@@ -28,7 +30,13 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  Zap
+  Zap,
+  Download,
+  Upload,
+  BarChart3,
+  AlertTriangle,
+  Pause,
+  RotateCcw
 } from 'lucide-react';
 
 const WorkflowBuilder = () => {
@@ -40,7 +48,9 @@ const WorkflowBuilder = () => {
       status: 'active',
       trigger: 'New Lead Created',
       steps: 5,
-      lastModified: '2024-01-15'
+      lastModified: '2024-01-15',
+      executions: 142,
+      successRate: 94.2
     },
     {
       id: 2,
@@ -49,12 +59,28 @@ const WorkflowBuilder = () => {
       status: 'draft',
       trigger: 'Deal Value > $10,000',
       steps: 3,
-      lastModified: '2024-01-14'
+      lastModified: '2024-01-14',
+      executions: 0,
+      successRate: 0
+    },
+    {
+      id: 3,
+      name: 'Customer Onboarding',
+      description: 'Automated welcome sequence for new customers',
+      status: 'active',
+      trigger: 'Deal Closed Won',
+      steps: 8,
+      lastModified: '2024-01-13',
+      executions: 67,
+      successRate: 89.6
     }
   ]);
 
   const [selectedWorkflow, setSelectedWorkflow] = useState(null);
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('design');
+  const [draggedNode, setDraggedNode] = useState(null);
+  const canvasRef = useRef(null);
   const [workflowNodes, setWorkflowNodes] = useState([
     {
       id: 'start',
@@ -249,11 +275,21 @@ const WorkflowBuilder = () => {
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500">Trigger:</span>
-                  <span>{workflow.trigger}</span>
+                  <span className="truncate">{workflow.trigger}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500">Steps:</span>
                   <span>{workflow.steps}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500">Executions:</span>
+                  <span>{workflow.executions}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500">Success Rate:</span>
+                  <span className={workflow.successRate > 90 ? 'text-green-600' : workflow.successRate > 70 ? 'text-yellow-600' : 'text-red-600'}>
+                    {workflow.successRate}%
+                  </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500">Last Modified:</span>
@@ -261,7 +297,7 @@ const WorkflowBuilder = () => {
                 </div>
               </div>
               <Separator className="my-3" />
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <Button size="sm" variant="outline" onClick={() => setIsBuilderOpen(true)}>
                   <Eye className="h-3 w-3 mr-1" />
                   View
@@ -274,6 +310,10 @@ const WorkflowBuilder = () => {
                   <Settings className="h-3 w-3 mr-1" />
                   Edit
                 </Button>
+                <Button size="sm" variant="outline">
+                  <BarChart3 className="h-3 w-3 mr-1" />
+                  Analytics
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -282,31 +322,54 @@ const WorkflowBuilder = () => {
 
       {/* Workflow Builder Dialog */}
       <Dialog open={isBuilderOpen} onOpenChange={setIsBuilderOpen}>
-        <DialogContent className="max-w-6xl h-[80vh]">
+        <DialogContent className="max-w-7xl h-[85vh]">
           <DialogHeader>
             <DialogTitle>Workflow Builder - Lead Qualification Process</DialogTitle>
           </DialogHeader>
           
-          <div className="flex gap-4 h-full">
-            <NodePalette />
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="design">Design</TabsTrigger>
+              <TabsTrigger value="settings">Settings</TabsTrigger>
+              <TabsTrigger value="analytics">Analytics</TabsTrigger>
+              <TabsTrigger value="history">History</TabsTrigger>
+            </TabsList>
             
-            <div className="flex-1 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Button size="sm">
-                    <Save className="h-4 w-4 mr-2" />
-                    Save
-                  </Button>
-                  <Button size="sm" variant="outline">
-                    <Play className="h-4 w-4 mr-2" />
-                    Test
-                  </Button>
+            <TabsContent value="design" className="flex gap-4 h-full mt-4">
+              <NodePalette />
+              
+              <div className="flex-1 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Button size="sm">
+                      <Save className="h-4 w-4 mr-2" />
+                      Save
+                    </Button>
+                    <Button size="sm" variant="outline">
+                      <Play className="h-4 w-4 mr-2" />
+                      Test
+                    </Button>
+                    <Button size="sm" variant="outline">
+                      <Download className="h-4 w-4 mr-2" />
+                      Export
+                    </Button>
+                    <Button size="sm" variant="outline">
+                      <Upload className="h-4 w-4 mr-2" />
+                      Import
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline">Draft</Badge>
+                    <Switch />
+                    <span className="text-sm text-gray-600">Active</span>
+                  </div>
                 </div>
-                <Badge variant="outline">Draft</Badge>
+                
+                <WorkflowCanvas />
               </div>
-              
-              <WorkflowCanvas />
-              
+            </TabsContent>
+            
+            <TabsContent value="settings" className="mt-4">
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm">Workflow Settings</CardTitle>
@@ -328,6 +391,7 @@ const WorkflowBuilder = () => {
                           <SelectItem value="lead_updated">Lead Updated</SelectItem>
                           <SelectItem value="deal_created">Deal Created</SelectItem>
                           <SelectItem value="contact_updated">Contact Updated</SelectItem>
+                          <SelectItem value="scheduled">Scheduled</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -340,10 +404,129 @@ const WorkflowBuilder = () => {
                       defaultValue="Automated lead scoring and assignment workflow"
                     />
                   </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>Error Handling</Label>
+                      <Select defaultValue="continue">
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="continue">Continue on Error</SelectItem>
+                          <SelectItem value="stop">Stop on Error</SelectItem>
+                          <SelectItem value="retry">Retry on Error</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Priority</Label>
+                      <Select defaultValue="normal">
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low">Low</SelectItem>
+                          <SelectItem value="normal">Normal</SelectItem>
+                          <SelectItem value="high">High</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Max Executions/Day</Label>
+                      <Input type="number" defaultValue="100" />
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
-            </div>
-          </div>
+            </TabsContent>
+            
+            <TabsContent value="analytics" className="mt-4">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">Total Executions</p>
+                        <p className="text-2xl font-bold">142</p>
+                      </div>
+                      <Play className="h-8 w-8 text-blue-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">Success Rate</p>
+                        <p className="text-2xl font-bold text-green-600">94.2%</p>
+                      </div>
+                      <CheckCircle className="h-8 w-8 text-green-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">Avg Duration</p>
+                        <p className="text-2xl font-bold">2.3s</p>
+                      </div>
+                      <Clock className="h-8 w-8 text-purple-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">Errors</p>
+                        <p className="text-2xl font-bold text-red-600">8</p>
+                      </div>
+                      <AlertTriangle className="h-8 w-8 text-red-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="history" className="mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Execution History</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {[
+                      { id: 1, status: 'success', time: '2 minutes ago', duration: '1.8s' },
+                      { id: 2, status: 'success', time: '5 minutes ago', duration: '2.1s' },
+                      { id: 3, status: 'error', time: '12 minutes ago', duration: '0.5s' },
+                      { id: 4, status: 'success', time: '18 minutes ago', duration: '2.3s' },
+                    ].map((execution) => (
+                      <div key={execution.id} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div className="flex items-center gap-3">
+                          {execution.status === 'success' ? (
+                            <CheckCircle className="h-5 w-5 text-green-500" />
+                          ) : (
+                            <XCircle className="h-5 w-5 text-red-500" />
+                          )}
+                          <div>
+                            <p className="text-sm font-medium">Execution #{execution.id}</p>
+                            <p className="text-xs text-gray-500">{execution.time}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm">{execution.duration}</p>
+                          <Badge variant={execution.status === 'success' ? 'default' : 'destructive'} className="text-xs">
+                            {execution.status}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
     </div>

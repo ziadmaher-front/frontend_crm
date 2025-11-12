@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,27 +9,20 @@ import {
   Mail,
   Phone,
   Building2,
-  Sparkles,
-  Calendar,
-  User,
-  TrendingUp,
   CheckSquare,
-  FileText,
-  MapPin,
-  Globe,
-  Linkedin
+  Globe
 } from "lucide-react";
 import { createPageUrl } from "@/utils";
 import ActivityTimeline from "../components/ActivityTimeline";
-import SendEmailDialog from "../components/SendEmailDialog";
 import QuickActions from "../components/QuickActions";
 import AIInsights from "../components/AIInsights";
+import { PageSkeleton } from "@/components/ui/loading-states";
 
 export default function LeadDetails() {
   const urlParams = new URLSearchParams(window.location.search);
   const leadId = urlParams.get('id');
 
-  const { data: lead } = useQuery({
+  const { data: lead, isLoading: leadLoading } = useQuery({
     queryKey: ['lead', leadId],
     queryFn: async () => {
       const leads = await base44.entities.Lead.list();
@@ -39,7 +31,7 @@ export default function LeadDetails() {
     enabled: !!leadId,
   });
 
-  const { data: activities = [] } = useQuery({
+  const { data: activities = [], isLoading: activitiesLoading } = useQuery({
     queryKey: ['lead-activities', leadId],
     queryFn: async () => {
       const allActivities = await base44.entities.Activity.list();
@@ -48,7 +40,7 @@ export default function LeadDetails() {
     enabled: !!leadId,
   });
 
-  const { data: communications = [] } = useQuery({
+  const { data: communications = [], isLoading: communicationsLoading } = useQuery({
     queryKey: ['lead-communications', leadId],
     queryFn: async () => {
       const allComms = await base44.entities.Communication.list();
@@ -57,7 +49,7 @@ export default function LeadDetails() {
     enabled: !!leadId,
   });
 
-  const { data: tasks = [] } = useQuery({
+  const { data: tasks = [], isLoading: tasksLoading } = useQuery({
     queryKey: ['lead-tasks', leadId],
     queryFn: async () => {
       const allTasks = await base44.entities.Task.list();
@@ -66,7 +58,7 @@ export default function LeadDetails() {
     enabled: !!leadId,
   });
 
-  const { data: documents = [] } = useQuery({
+  const { data: documents = [], isLoading: documentsLoading } = useQuery({
     queryKey: ['lead-documents', leadId],
     queryFn: async () => {
       const allDocs = await base44.entities.Document.list();
@@ -94,10 +86,16 @@ export default function LeadDetails() {
     'Converted': 'bg-amber-100 text-amber-700 border-amber-200',
   };
 
+  const isLoading = leadLoading || activitiesLoading || communicationsLoading || tasksLoading || documentsLoading;
+
+  if (isLoading) {
+    return <PageSkeleton />;
+  }
+
   if (!lead) {
     return (
       <div className="p-6">
-        <p>Loading...</p>
+        <p>Lead not found</p>
       </div>
     );
   }

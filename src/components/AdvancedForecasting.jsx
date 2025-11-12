@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -130,35 +130,39 @@ const AdvancedForecasting = () => {
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
 
-  const MetricCard = ({ title, value, change, icon: Icon, trend }) => (
-    <Card>
-      <CardContent className="p-4">
+  // Memoized MetricCard component
+  const MetricCard = memo(({ title, value, change, icon: Icon, trend }) => (
+    <Card className="border-none shadow-lg">
+      <CardContent className="p-6">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-gray-600">{title}</p>
+            <p className="text-sm text-gray-600 mb-1">{title}</p>
             <p className="text-2xl font-bold">{value}</p>
-            {change && (
-              <div className={`flex items-center gap-1 text-sm ${
-                trend === 'up' ? 'text-green-600' : trend === 'down' ? 'text-red-600' : 'text-gray-600'
-              }`}>
-                {trend === 'up' ? (
-                  <TrendingUp className="h-3 w-3" />
-                ) : trend === 'down' ? (
-                  <TrendingDown className="h-3 w-3" />
-                ) : null}
-                {change}
-              </div>
-            )}
+            <div className={`flex items-center gap-1 text-sm ${
+              trend === 'up' ? 'text-green-600' : 'text-red-600'
+            }`}>
+              {trend === 'up' ? (
+                <TrendingUp className="h-4 w-4" />
+              ) : (
+                <TrendingDown className="h-4 w-4" />
+              )}
+              {change}
+            </div>
           </div>
-          <div className="p-2 bg-blue-100 rounded-lg">
-            <Icon className="h-5 w-5 text-blue-600" />
+          <div className={`p-3 rounded-xl ${
+            trend === 'up' ? 'bg-green-100' : 'bg-red-100'
+          }`}>
+            <Icon className={`w-6 h-6 ${
+              trend === 'up' ? 'text-green-600' : 'text-red-600'
+            }`} />
           </div>
         </div>
       </CardContent>
     </Card>
-  );
+  ));
 
-  const CohortHeatmap = ({ data }) => (
+  // Memoized CohortHeatmap component
+  const CohortHeatmap = memo(({ data }) => (
     <div className="space-y-2">
       <div className="grid grid-cols-7 gap-1 text-xs font-medium text-gray-600">
         <div>Cohort</div>
@@ -196,9 +200,12 @@ const AdvancedForecasting = () => {
         </div>
       ))}
     </div>
-  );
+  ));
 
-  const ModelComparisonRadar = ({ data }) => (
+  CohortHeatmap.displayName = 'CohortHeatmap';
+
+  // Memoized ModelComparisonRadar component
+  const ModelComparisonRadar = memo(({ data }) => (
     <ResponsiveContainer width="100%" height={300}>
       <RadarChart data={data}>
         <PolarGrid />
@@ -214,7 +221,7 @@ const AdvancedForecasting = () => {
         <Tooltip />
       </RadarChart>
     </ResponsiveContainer>
-  );
+  ));
 
   return (
     <div className="space-y-6">

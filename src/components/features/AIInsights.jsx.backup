@@ -1,0 +1,1103 @@
+// AI-Powered Insights Component
+// Provides intelligent analysis and recommendations based on CRM data patterns
+
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Brain,
+  TrendingUp,
+  TrendingDown,
+  Target,
+  Users,
+  DollarSign,
+  Calendar,
+  Lightbulb,
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle,
+  BarChart3,
+  PieChart,
+  Activity,
+  Zap,
+  Star,
+  ArrowRight,
+  RefreshCw,
+  Bot,
+  Sparkles,
+  Clock,
+  Shield,
+  Rocket,
+  Eye,
+  Filter,
+  Settings,
+  Loader2
+} from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useDeals, useLeads, useContacts, useTasks, useDashboardAnalytics } from '@/hooks/useBusinessLogic';
+
+const AIInsights = () => {
+  const [insights, setInsights] = useState([]);
+  const [predictions, setPredictions] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedInsight, setSelectedInsight] = useState(null);
+  const [activeTab, setActiveTab] = useState('insights');
+  const [insightFilter, setInsightFilter] = useState('all');
+
+  const { data: deals, revenueMetrics, pipelineData } = useDeals();
+  const { data: leads } = useLeads();
+  const { data: contacts } = useContacts();
+  const { data: tasks, overdueTasks } = useTasks();
+  const { metrics } = useDashboardAnalytics();
+
+  // AI Insight Categories with enhanced categorization
+  const insightCategories = {
+    performance: { icon: BarChart3, color: 'text-blue-500', label: 'Performance', bgColor: 'bg-blue-50' },
+    opportunities: { icon: Target, color: 'text-green-500', label: 'Opportunities', bgColor: 'bg-green-50' },
+    risks: { icon: AlertCircle, color: 'text-red-500', label: 'Risks', bgColor: 'bg-red-50' },
+    recommendations: { icon: Lightbulb, color: 'text-yellow-500', label: 'Recommendations', bgColor: 'bg-yellow-50' },
+    trends: { icon: TrendingUp, color: 'text-purple-500', label: 'Trends', bgColor: 'bg-purple-50' },
+    predictions: { icon: Bot, color: 'text-indigo-500', label: 'Predictions', bgColor: 'bg-indigo-50' },
+    automation: { icon: Zap, color: 'text-orange-500', label: 'Automation', bgColor: 'bg-orange-50' }
+  };
+
+  // Advanced ML-based lead scoring algorithm
+  const calculateLeadScore = useCallback((lead) => {
+    let score = 0;
+    const weights = {
+      source: { 'Website': 30, 'Referral': 40, 'Social Media': 20, 'Cold Call': 10, 'Email': 25 },
+      industry: { 'Technology': 35, 'Healthcare': 30, 'Finance': 40, 'Manufacturing': 25, 'Retail': 20 },
+      company_size: { 'Enterprise': 50, 'Mid-Market': 35, 'Small Business': 20, 'Startup': 15 },
+      engagement: { 'High': 40, 'Medium': 25, 'Low': 10 },
+      budget: { 'High': 45, 'Medium': 30, 'Low': 15, 'Unknown': 5 }
+    };
+
+    // Source scoring
+    score += weights.source[lead.source] || 15;
+    
+    // Industry scoring
+    score += weights.industry[lead.industry] || 20;
+    
+    // Company size scoring
+    score += weights.company_size[lead.company_size] || 20;
+    
+    // Engagement level (based on activities)
+    const engagementLevel = lead.activities?.length > 5 ? 'High' : lead.activities?.length > 2 ? 'Medium' : 'Low';
+    score += weights.engagement[engagementLevel];
+    
+    // Budget scoring
+    score += weights.budget[lead.budget_range] || 5;
+    
+    // Recency bonus (leads created in last 7 days get bonus)
+    const daysSinceCreated = (new Date() - new Date(lead.created_date)) / (1000 * 60 * 60 * 24);
+    if (daysSinceCreated <= 7) score += 10;
+    
+    return Math.min(100, Math.max(0, score));
+  }, []);
+
+  // Predictive analytics for deal closure probability
+  const predictDealClosure = useCallback((deal) => {
+    let probability = 0;
+    const stageWeights = {
+      'Prospecting': 10,
+      'Qualification': 25,
+      'Proposal': 50,
+      'Negotiation': 75,
+      'Closed Won': 100,
+      'Closed Lost': 0
+    };
+
+    // Base probability from stage
+    probability = stageWeights[deal.stage] || 20;
+
+    // Deal age factor (older deals less likely to close)
+    const daysInStage = (new Date() - new Date(deal.last_activity_date)) / (1000 * 60 * 60 * 24);
+    if (daysInStage > 30) probability *= 0.8;
+    if (daysInStage > 60) probability *= 0.6;
+
+    // Deal size factor
+    const avgDealSize = revenueMetrics?.avgDealSize || 50000;
+    if (deal.value > avgDealSize * 1.5) probability *= 0.9; // Large deals harder to close
+    if (deal.value < avgDealSize * 0.5) probability *= 1.1; // Small deals easier to close
+
+    // Activity level factor
+    const recentActivities = deal.activities?.filter(activity => {
+      const activityDate = new Date(activity.date);
+      const daysSince = (new Date() - activityDate) / (1000 * 60 * 60 * 24);
+      return daysSince <= 14;
+    }) || [];
+
+    if (recentActivities.length > 3) probability *= 1.2;
+    if (recentActivities.length === 0) probability *= 0.7;
+
+    return Math.min(100, Math.max(0, probability));
+  }, [revenueMetrics]);
+
+  // Customer churn risk analysis
+  const analyzeChurnRisk = useCallback((contact) => {
+    let riskScore = 0;
+    
+    // Last interaction recency
+    const lastInteraction = contact.last_interaction_date ? new Date(contact.last_interaction_date) : new Date(contact.created_date);
+    const daysSinceInteraction = (new Date() - lastInteraction) / (1000 * 60 * 60 * 24);
+    
+    if (daysSinceInteraction > 90) riskScore += 40;
+    else if (daysSinceInteraction > 60) riskScore += 25;
+    else if (daysSinceInteraction > 30) riskScore += 10;
+
+    // Deal activity
+    const activeDeals = deals?.filter(deal => deal.contact_id === contact.id && deal.stage !== 'Closed Lost' && deal.stage !== 'Closed Won') || [];
+    if (activeDeals.length === 0) riskScore += 30;
+
+    // Support tickets or issues
+    if (contact.support_tickets > 3) riskScore += 20;
+    if (contact.satisfaction_score < 3) riskScore += 25;
+
+    // Engagement trend
+    const recentActivities = contact.activities?.filter(activity => {
+      const activityDate = new Date(activity.date);
+      const daysSince = (new Date() - activityDate) / (1000 * 60 * 60 * 24);
+      return daysSince <= 30;
+    }) || [];
+
+    if (recentActivities.length === 0) riskScore += 20;
+
+    return Math.min(100, Math.max(0, riskScore));
+  }, [deals]);
+
+  // Filter insights based on selected category
+  const filteredInsights = useMemo(() => {
+    if (insightFilter === 'all') return insights;
+    return insights.filter(insight => insight.category === insightFilter);
+  }, [insights, insightFilter]);
+
+  // Generate advanced AI insights with ML algorithms
+  const generateAdvancedInsights = useCallback(() => {
+    const newInsights = [];
+    const newPredictions = [];
+    const now = new Date();
+
+    // Advanced Lead Scoring Insights
+    if (leads && leads.length > 0) {
+      const scoredLeads = leads.map(lead => ({
+        ...lead,
+        aiScore: calculateLeadScore(lead)
+      }));
+
+      const highScoreLeads = scoredLeads.filter(lead => lead.aiScore >= 70);
+      const avgScore = scoredLeads.reduce((sum, lead) => sum + lead.aiScore, 0) / scoredLeads.length;
+
+      newInsights.push({
+        id: 'ai-lead-scoring',
+        category: 'predictions',
+        title: 'AI Lead Scoring Analysis',
+        description: `${highScoreLeads.length} high-quality leads identified with average score of ${avgScore.toFixed(1)}.`,
+        score: avgScore,
+        impact: 'high',
+        actionable: true,
+        confidence: 92,
+        recommendations: [
+          `Prioritize ${highScoreLeads.length} high-scoring leads for immediate follow-up`,
+          'Implement automated nurturing for medium-score leads',
+          'Review and optimize lead qualification criteria'
+        ],
+        metrics: {
+          'High Score Leads': highScoreLeads.length,
+          'Average Score': avgScore.toFixed(1),
+          'Conversion Potential': `${(avgScore * 0.8).toFixed(1)}%`
+        },
+        chartData: scoredLeads.slice(0, 10).map(lead => ({
+          name: lead.company || lead.name,
+          score: lead.aiScore,
+          source: lead.source
+        }))
+      });
+    }
+
+    // Deal Closure Predictions
+    if (deals && deals.length > 0) {
+      const activeDeals = deals.filter(deal => !['Closed Won', 'Closed Lost'].includes(deal.stage));
+      const predictedDeals = activeDeals.map(deal => ({
+        ...deal,
+        closureProbability: predictDealClosure(deal)
+      }));
+
+      const highProbabilityDeals = predictedDeals.filter(deal => deal.closureProbability >= 70);
+      const atRiskDeals = predictedDeals.filter(deal => deal.closureProbability <= 30);
+
+      newPredictions.push({
+        id: 'deal-closure-prediction',
+        title: 'Deal Closure Predictions',
+        type: 'probability',
+        data: predictedDeals.slice(0, 10),
+        summary: {
+          highProbability: highProbabilityDeals.length,
+          atRisk: atRiskDeals.length,
+          totalValue: predictedDeals.reduce((sum, deal) => sum + (deal.value * deal.closureProbability / 100), 0)
+        }
+      });
+
+      newInsights.push({
+        id: 'deal-predictions',
+        category: 'predictions',
+        title: 'Deal Closure Predictions',
+        description: `${highProbabilityDeals.length} deals likely to close, ${atRiskDeals.length} at risk.`,
+        score: 85,
+        impact: 'high',
+        actionable: true,
+        confidence: 88,
+        recommendations: [
+          `Focus on ${highProbabilityDeals.length} high-probability deals for quick wins`,
+          `Develop rescue strategies for ${atRiskDeals.length} at-risk deals`,
+          'Implement deal stage automation to maintain momentum'
+        ],
+        metrics: {
+          'Likely to Close': highProbabilityDeals.length,
+          'At Risk': atRiskDeals.length,
+          'Predicted Revenue': `$${(predictedDeals.reduce((sum, deal) => sum + (deal.value * deal.closureProbability / 100), 0)).toLocaleString()}`
+        }
+      });
+    }
+
+    // Customer Churn Risk Analysis
+    if (contacts && contacts.length > 0) {
+      const churnAnalysis = contacts.map(contact => ({
+        ...contact,
+        churnRisk: analyzeChurnRisk(contact)
+      }));
+
+      const highRiskContacts = churnAnalysis.filter(contact => contact.churnRisk >= 60);
+      const avgRisk = churnAnalysis.reduce((sum, contact) => sum + contact.churnRisk, 0) / churnAnalysis.length;
+
+      newInsights.push({
+        id: 'churn-risk-analysis',
+        category: 'risks',
+        title: 'Customer Churn Risk Analysis',
+        description: `${highRiskContacts.length} customers at high risk of churning.`,
+        score: 100 - avgRisk,
+        impact: 'high',
+        actionable: true,
+        confidence: 85,
+        recommendations: [
+          `Immediate outreach to ${highRiskContacts.length} high-risk customers`,
+          'Implement proactive customer success programs',
+          'Set up automated health score monitoring'
+        ],
+        metrics: {
+          'High Risk Customers': highRiskContacts.length,
+          'Average Risk Score': avgRisk.toFixed(1),
+          'Retention Rate': `${(100 - avgRisk).toFixed(1)}%`
+        }
+      });
+    }
+
+    // Intelligent Automation Recommendations
+    const automationOpportunities = [];
+    
+    if (overdueTasks?.length > 5) {
+      automationOpportunities.push({
+        type: 'Task Management',
+        description: 'Automate task creation and reminders',
+        impact: 'High',
+        effort: 'Medium'
+      });
+    }
+
+    if (leads?.filter(lead => !lead.assigned_to).length > 10) {
+      automationOpportunities.push({
+        type: 'Lead Assignment',
+        description: 'Implement round-robin lead distribution',
+        impact: 'High',
+        effort: 'Low'
+      });
+    }
+
+    const staleDeals = deals?.filter(deal => {
+      const daysSinceUpdate = (new Date() - new Date(deal.last_activity_date)) / (1000 * 60 * 60 * 24);
+      return daysSinceUpdate > 14 && !['Closed Won', 'Closed Lost'].includes(deal.stage);
+    }) || [];
+
+    if (staleDeals.length > 3) {
+      automationOpportunities.push({
+        type: 'Deal Follow-up',
+        description: 'Automated stale deal notifications',
+        impact: 'Medium',
+        effort: 'Low'
+      });
+    }
+
+    if (automationOpportunities.length > 0) {
+      newInsights.push({
+        id: 'automation-opportunities',
+        category: 'automation',
+        title: 'Intelligent Automation Opportunities',
+        description: `${automationOpportunities.length} automation opportunities identified.`,
+        score: 90,
+        impact: 'high',
+        actionable: true,
+        confidence: 95,
+        recommendations: automationOpportunities.map(opp => 
+          `${opp.type}: ${opp.description} (${opp.impact} impact, ${opp.effort} effort)`
+        ),
+        metrics: {
+          'Opportunities': automationOpportunities.length,
+          'Potential Time Saved': '15-20 hours/week',
+          'ROI Estimate': '300-500%'
+        }
+      });
+    }
+
+    // Revenue Forecasting with Trend Analysis
+    if (revenueMetrics && deals) {
+      const monthlyRevenue = [];
+      const last6Months = [];
+      
+      for (let i = 5; i >= 0; i--) {
+        const date = new Date();
+        date.setMonth(date.getMonth() - i);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        
+        const monthDeals = deals.filter(deal => {
+          const dealDate = new Date(deal.close_date || deal.created_date);
+          const dealMonthKey = `${dealDate.getFullYear()}-${String(dealDate.getMonth() + 1).padStart(2, '0')}`;
+          return dealMonthKey === monthKey && deal.stage === 'Closed Won';
+        });
+        
+        const monthRevenue = monthDeals.reduce((sum, deal) => sum + (deal.value || 0), 0);
+        monthlyRevenue.push({ month: monthKey, revenue: monthRevenue });
+        last6Months.push(monthRevenue);
+      }
+
+      // Simple linear regression for trend
+      const avgRevenue = last6Months.reduce((sum, rev) => sum + rev, 0) / last6Months.length;
+      const trend = last6Months.length > 1 ? 
+        (last6Months[last6Months.length - 1] - last6Months[0]) / last6Months.length : 0;
+
+      newPredictions.push({
+        id: 'revenue-forecast',
+        title: 'Revenue Forecast',
+        type: 'forecast',
+        data: monthlyRevenue,
+        trend: trend > 0 ? 'up' : trend < 0 ? 'down' : 'stable',
+        nextMonthPrediction: avgRevenue + trend,
+        confidence: 78
+      });
+    }
+
+    // Performance Insights
+    if (revenueMetrics && deals) {
+      const avgDealSize = revenueMetrics.avgDealSize || 0;
+      const conversionRate = revenueMetrics.conversionRate || 0;
+      
+      newInsights.push({
+        id: 'revenue-performance',
+        category: 'performance',
+        title: 'Revenue Performance Analysis',
+        description: `Your average deal size is $${avgDealSize.toLocaleString()} with a ${conversionRate.toFixed(1)}% conversion rate.`,
+        score: conversionRate > 25 ? 85 : conversionRate > 15 ? 65 : 40,
+        impact: 'high',
+        actionable: true,
+        recommendations: [
+          conversionRate < 20 ? 'Focus on lead qualification to improve conversion rates' : 'Maintain current sales process effectiveness',
+          avgDealSize < 10000 ? 'Consider upselling strategies to increase deal values' : 'Excellent deal sizing performance',
+          'Analyze top-performing deals to replicate success patterns'
+        ],
+        metrics: {
+          'Avg Deal Size': `$${avgDealSize.toLocaleString()}`,
+          'Conversion Rate': `${conversionRate.toFixed(1)}%`,
+          'Total Revenue': `$${(revenueMetrics.totalRevenue || 0).toLocaleString()}`
+        }
+      });
+    }
+
+    return { insights: newInsights, predictions: newPredictions };
+  }, [deals, leads, contacts, tasks, overdueTasks, revenueMetrics, pipelineData, metrics, calculateLeadScore, predictDealClosure, analyzeChurnRisk]);
+
+    // Lead Quality Insights
+    if (leads && leads.length > 0) {
+      const leadSources = leads.reduce((acc, lead) => {
+        acc[lead.source] = (acc[lead.source] || 0) + 1;
+        return acc;
+      }, {});
+
+      const topSource = Object.entries(leadSources).sort(([,a], [,b]) => b - a)[0];
+      const leadConversionBySource = {};
+      
+      Object.keys(leadSources).forEach(source => {
+        const sourceLeads = leads.filter(l => l.source === source);
+        const convertedLeads = sourceLeads.filter(l => l.status === 'Converted');
+        leadConversionBySource[source] = sourceLeads.length > 0 ? (convertedLeads.length / sourceLeads.length) * 100 : 0;
+      });
+
+      newInsights.push({
+        id: 'lead-quality',
+        category: 'opportunities',
+        title: 'Lead Source Optimization',
+        description: `${topSource?.[0] || 'Unknown'} is your top lead source with ${topSource?.[1] || 0} leads.`,
+        score: 75,
+        impact: 'medium',
+        actionable: true,
+        recommendations: [
+          `Invest more in ${topSource?.[0] || 'top-performing'} lead generation`,
+          'Analyze conversion rates by source to optimize marketing spend',
+          'Consider A/B testing different lead capture methods'
+        ],
+        metrics: {
+          'Total Leads': leads.length,
+          'Top Source': topSource?.[0] || 'N/A',
+          'Source Leads': topSource?.[1] || 0
+        }
+      });
+    }
+
+    // Task Management Insights
+    if (tasks && overdueTasks) {
+      const completionRate = tasks.length > 0 ? ((tasks.length - overdueTasks.length) / tasks.length) * 100 : 100;
+      
+      newInsights.push({
+        id: 'task-efficiency',
+        category: completionRate < 80 ? 'risks' : 'performance',
+        title: 'Task Management Efficiency',
+        description: `You have a ${completionRate.toFixed(1)}% task completion rate with ${overdueTasks.length} overdue tasks.`,
+        score: completionRate,
+        impact: completionRate < 70 ? 'high' : 'medium',
+        actionable: true,
+        recommendations: [
+          overdueTasks.length > 5 ? 'Prioritize overdue tasks to prevent customer impact' : 'Good task management',
+          'Consider task automation for recurring activities',
+          'Set up better reminder systems for important deadlines'
+        ],
+        metrics: {
+          'Total Tasks': tasks.length,
+          'Overdue Tasks': overdueTasks.length,
+          'Completion Rate': `${completionRate.toFixed(1)}%`
+        }
+      });
+    }
+
+    // Pipeline Health Insights
+    if (pipelineData && Object.keys(pipelineData).length > 0) {
+      const stages = Object.keys(pipelineData);
+      const totalDeals = Object.values(pipelineData).reduce((sum, stage) => sum + stage.count, 0);
+      const totalValue = Object.values(pipelineData).reduce((sum, stage) => sum + stage.value, 0);
+      
+      const bottleneckStage = Object.entries(pipelineData)
+        .sort(([,a], [,b]) => b.count - a.count)[0];
+
+      newInsights.push({
+        id: 'pipeline-health',
+        category: 'trends',
+        title: 'Sales Pipeline Analysis',
+        description: `Your pipeline has ${totalDeals} deals worth $${totalValue.toLocaleString()} across ${stages.length} stages.`,
+        score: totalDeals > 20 ? 80 : totalDeals > 10 ? 60 : 40,
+        impact: 'high',
+        actionable: true,
+        recommendations: [
+          `Focus on moving deals out of ${bottleneckStage?.[0] || 'bottleneck'} stage`,
+          'Implement stage-specific follow-up processes',
+          'Regular pipeline reviews to identify stalled deals'
+        ],
+        metrics: {
+          'Total Deals': totalDeals,
+          'Pipeline Value': `$${totalValue.toLocaleString()}`,
+          'Avg Deal Value': `$${totalDeals > 0 ? (totalValue / totalDeals).toLocaleString() : 0}`
+        }
+      });
+    }
+
+    // Contact Engagement Insights
+    if (contacts && contacts.length > 0) {
+      const recentContacts = contacts.filter(contact => {
+        const createdDate = new Date(contact.created_date);
+        const daysDiff = (now - createdDate) / (1000 * 60 * 60 * 24);
+        return daysDiff <= 30;
+      });
+
+      newInsights.push({
+        id: 'contact-growth',
+        category: 'trends',
+        title: 'Contact Database Growth',
+        description: `You've added ${recentContacts.length} new contacts in the last 30 days.`,
+        score: recentContacts.length > 10 ? 85 : recentContacts.length > 5 ? 65 : 45,
+        impact: 'medium',
+        actionable: true,
+        recommendations: [
+          recentContacts.length < 5 ? 'Increase networking and lead generation efforts' : 'Great contact acquisition rate',
+          'Ensure new contacts are properly segmented and tagged',
+          'Set up automated welcome sequences for new contacts'
+        ],
+        metrics: {
+          'Total Contacts': contacts.length,
+          'New This Month': recentContacts.length,
+          'Growth Rate': `${contacts.length > 0 ? ((recentContacts.length / contacts.length) * 100).toFixed(1) : 0}%`
+        }
+      });
+    }
+
+    // Smart Recommendations
+    const smartRecommendations = [];
+    
+    if (revenueMetrics?.conversionRate < 20) {
+      smartRecommendations.push('Implement lead scoring to focus on high-quality prospects');
+    }
+    
+    if (overdueTasks?.length > 3) {
+      smartRecommendations.push('Set up automated task reminders and escalation rules');
+    }
+    
+    if (leads?.length > contacts?.length * 0.5) {
+      smartRecommendations.push('Focus on lead conversion - you have many unconverted leads');
+    }
+
+    if (smartRecommendations.length > 0) {
+      newInsights.push({
+        id: 'smart-recommendations',
+        category: 'recommendations',
+        title: 'AI-Powered Recommendations',
+        description: 'Based on your data patterns, here are personalized recommendations.',
+        score: 90,
+        impact: 'high',
+        actionable: true,
+        recommendations: smartRecommendations,
+        metrics: {
+          'Recommendations': smartRecommendations.length,
+          'Confidence': '90%',
+          'Expected Impact': 'High'
+        }
+      });
+    }
+
+    return newInsights;
+  }, [deals, leads, contacts, tasks, overdueTasks, revenueMetrics, pipelineData, metrics]);
+
+  // Refresh insights with enhanced processing
+  const refreshInsights = useCallback(async () => {
+    setLoading(true);
+    // Simulate AI processing time with realistic delay
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    const { insights: newInsights, predictions: newPredictions } = generateAdvancedInsights();
+    setInsights(newInsights);
+    setPredictions(newPredictions);
+    setLoading(false);
+  }, [generateAdvancedInsights]);
+
+  useEffect(() => {
+    refreshInsights();
+  }, [refreshInsights]);
+
+  const getScoreColor = (score) => {
+    if (score >= 80) return 'text-green-500';
+    if (score >= 60) return 'text-yellow-500';
+    return 'text-red-500';
+  };
+
+  const getImpactBadge = (impact) => {
+    const colors = {
+      high: 'bg-red-100 text-red-800',
+      medium: 'bg-yellow-100 text-yellow-800',
+      low: 'bg-green-100 text-green-800'
+    };
+    return colors[impact] || colors.medium;
+  };
+
+  const EnhancedInsightCard = ({ insight }) => {
+    const { icon: Icon, color, bgColor } = insightCategories[insight.category];
+    
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="cursor-pointer"
+        onClick={() => setSelectedInsight(insight)}
+      >
+        <Card className="hover:shadow-lg transition-all duration-200 border-l-4 border-l-blue-500 relative overflow-hidden">
+          <div className={`absolute top-0 right-0 w-20 h-20 ${bgColor} opacity-10 rounded-full -mr-10 -mt-10`}></div>
+          
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center space-x-3">
+                <div className={`p-2 rounded-lg ${bgColor}`}>
+                  <Icon className={`w-5 h-5 ${color}`} />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">{insight.title}</CardTitle>
+                  <div className="flex items-center space-x-2 mt-1">
+                    <Badge className={getImpactBadge(insight.impact)} variant="secondary">
+                      {insight.impact} impact
+                    </Badge>
+                    {insight.confidence && (
+                      <Badge variant="outline" className="text-xs">
+                        {insight.confidence}% confidence
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className={`text-2xl font-bold ${getScoreColor(insight.score)}`}>
+                  {insight.score}
+                </div>
+                <div className="text-xs text-gray-500">Score</div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-gray-600 mb-4">{insight.description}</p>
+            
+            <div className="space-y-2 mb-4">
+              <div className="flex justify-between text-sm">
+                <span>Confidence</span>
+                <span>{insight.confidence || insight.score}%</span>
+              </div>
+              <Progress value={insight.confidence || insight.score} className="h-2" />
+            </div>
+
+            {insight.chartData && (
+              <div className="h-32 mb-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={insight.chartData}>
+                    <Area type="monotone" dataKey="score" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.1} />
+                    <XAxis dataKey="name" hide />
+                    <YAxis hide />
+                    <Tooltip />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between">
+              <Badge variant="outline">{insightCategories[insight.category].label}</Badge>
+              <Button variant="ghost" size="sm">
+                View Details <ArrowRight className="w-4 h-4 ml-1" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+    );
+  };
+
+  const PredictionsPanel = () => (
+    <div className="space-y-6">
+      {predictions.map((prediction) => (
+        <Card key={prediction.id}>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Bot className="w-5 h-5 text-indigo-500" />
+              <span>{prediction.title}</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {prediction.type === 'probability' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-4 mb-4">
+                  <div className="text-center p-3 bg-green-50 rounded-lg">
+                    <div className="text-2xl font-bold text-green-600">{prediction.summary.highProbability}</div>
+                    <div className="text-sm text-gray-600">High Probability</div>
+                  </div>
+                  <div className="text-center p-3 bg-red-50 rounded-lg">
+                    <div className="text-2xl font-bold text-red-600">{prediction.summary.atRisk}</div>
+                    <div className="text-sm text-gray-600">At Risk</div>
+                  </div>
+                  <div className="text-center p-3 bg-blue-50 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600">
+                      ${prediction.summary.totalValue.toLocaleString()}
+                    </div>
+                    <div className="text-sm text-gray-600">Predicted Value</div>
+                  </div>
+                </div>
+                
+                <ScrollArea className="h-64">
+                  <div className="space-y-2">
+                    {prediction.data.map((deal, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div>
+                          <div className="font-medium">{deal.name}</div>
+                          <div className="text-sm text-gray-600">${deal.value?.toLocaleString()}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className={`font-bold ${getScoreColor(deal.closureProbability)}`}>
+                            {deal.closureProbability.toFixed(1)}%
+                          </div>
+                          <Progress value={deal.closureProbability} className="w-20 h-2" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+            )}
+
+            {prediction.type === 'forecast' && (
+              <div className="space-y-4">
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={prediction.data}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <Tooltip formatter={(value) => [`$${value.toLocaleString()}`, 'Revenue']} />
+                      <Line type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <div className="text-sm text-gray-600">Next Month Prediction</div>
+                    <div className="text-xl font-bold">${prediction.nextMonthPrediction.toLocaleString()}</div>
+                  </div>
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <div className="text-sm text-gray-600">Confidence Level</div>
+                    <div className="text-xl font-bold">{prediction.confidence}%</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+
+  const InsightDetail = ({ insight }) => {
+    if (!insight) return null;
+
+    const { icon: Icon, color } = insightCategories[insight.category];
+
+    return (
+      <Card>
+        <CardHeader>
+          <div className="flex items-center space-x-3">
+            <div className={`p-3 rounded-lg bg-gray-50`}>
+              <Icon className={`w-6 h-6 ${color}`} />
+            </div>
+            <div>
+              <CardTitle className="text-xl">{insight.title}</CardTitle>
+              <p className="text-gray-600">{insight.description}</p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <Tabs defaultValue="recommendations" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="recommendations">Recommendations</TabsTrigger>
+              <TabsTrigger value="metrics">Key Metrics</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="recommendations" className="mt-4">
+              <div className="space-y-3">
+                {insight.recommendations.map((rec, index) => (
+                  <div key={index} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
+                    <Lightbulb className="w-5 h-5 text-yellow-500 mt-0.5" />
+                    <p className="text-sm">{rec}</p>
+                  </div>
+                ))}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="metrics" className="mt-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {Object.entries(insight.metrics).map(([key, value]) => (
+                  <div key={key} className="p-3 bg-gray-50 rounded-lg">
+                    <div className="text-sm text-gray-600">{key}</div>
+                    <div className="text-lg font-semibold">{value}</div>
+                  </div>
+                ))}
+              </div>
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="p-3 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-lg">
+            <Brain className="w-6 h-6 text-white" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold">AI Insights & Predictions</h2>
+            <p className="text-gray-600">Intelligent analysis and recommendations powered by machine learning</p>
+          </div>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Button
+            onClick={refreshInsights}
+            disabled={loading}
+            variant="outline"
+            size="sm"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? 'Analyzing...' : 'Refresh'}
+          </Button>
+          <Button variant="outline" size="sm">
+            <Settings className="w-4 h-4 mr-2" />
+            Configure
+          </Button>
+        </div>
+      </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="insights" className="flex items-center space-x-2">
+            <Lightbulb className="w-4 h-4" />
+            <span>Insights</span>
+          </TabsTrigger>
+          <TabsTrigger value="predictions" className="flex items-center space-x-2">
+            <TrendingUp className="w-4 h-4" />
+            <span>Predictions</span>
+          </TabsTrigger>
+          <TabsTrigger value="automation" className="flex items-center space-x-2">
+            <Zap className="w-4 h-4" />
+            <span>Automation</span>
+          </TabsTrigger>
+          <TabsTrigger value="analytics" className="flex items-center space-x-2">
+            <BarChart3 className="w-4 h-4" />
+            <span>Analytics</span>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="insights" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <span className="text-sm font-medium">Filter by category:</span>
+              <select
+                value={insightFilter}
+                onChange={(e) => setInsightFilter(e.target.value)}
+                className="px-3 py-1 border rounded-md text-sm"
+              >
+                <option value="all">All Categories</option>
+                {Object.entries(insightCategories).map(([key, category]) => (
+                  <option key={key} value={key}>{category.label}</option>
+                ))}
+              </select>
+            </div>
+            <Badge variant="secondary" className="text-xs">
+              {filteredInsights.length} insights found
+            </Badge>
+          </div>
+
+          {loading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[...Array(6)].map((_, i) => (
+                <Card key={i} className="animate-pulse">
+                  <CardHeader>
+                    <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                    <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <div className="h-3 bg-gray-200 rounded"></div>
+                      <div className="h-3 bg-gray-200 rounded w-5/6"></div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : filteredInsights.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredInsights.map((insight) => (
+                <EnhancedInsightCard key={insight.id} insight={insight} />
+              ))}
+            </div>
+          ) : (
+            <Card className="text-center py-12">
+              <CardContent>
+                <Brain className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No insights available</h3>
+                <p className="text-gray-500 mb-4">
+                  We're analyzing your data to generate intelligent insights.
+                </p>
+                <Button onClick={refreshInsights} disabled={loading}>
+                  Generate Insights
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="predictions" className="space-y-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold">Predictive Analytics</h3>
+              <p className="text-sm text-gray-600">AI-powered forecasts and probability analysis</p>
+            </div>
+            <Badge variant="outline" className="text-xs">
+              Updated {new Date().toLocaleTimeString()}
+            </Badge>
+          </div>
+          
+          {loading ? (
+            <div className="space-y-4">
+              {[...Array(2)].map((_, i) => (
+                <Card key={i} className="animate-pulse">
+                  <CardHeader>
+                    <div className="h-6 bg-gray-200 rounded w-1/2"></div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-32 bg-gray-200 rounded"></div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <PredictionsPanel />
+          )}
+        </TabsContent>
+
+        <TabsContent value="automation" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Zap className="w-5 h-5 text-yellow-500" />
+                  <span>Smart Automation Opportunities</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {filteredInsights
+                    .filter(insight => insight.category === 'automation')
+                    .map((insight) => (
+                      <div key={insight.id} className="p-3 bg-yellow-50 rounded-lg border-l-4 border-yellow-400">
+                        <div className="font-medium">{insight.title}</div>
+                        <div className="text-sm text-gray-600 mt-1">{insight.description}</div>
+                        <div className="flex items-center justify-between mt-2">
+                          <Badge variant="outline" className="text-xs">
+                            {insight.confidence}% confidence
+                          </Badge>
+                          <Button size="sm" variant="ghost">
+                            Implement <ArrowRight className="w-3 h-3 ml-1" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Bot className="w-5 h-5 text-blue-500" />
+                  <span>AI Workflow Suggestions</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="p-3 bg-blue-50 rounded-lg">
+                    <div className="font-medium">Auto-assign leads based on territory</div>
+                    <div className="text-sm text-gray-600">Automatically route new leads to the right sales rep</div>
+                    <Button size="sm" className="mt-2" variant="outline">Setup Workflow</Button>
+                  </div>
+                  <div className="p-3 bg-green-50 rounded-lg">
+                    <div className="font-medium">Smart follow-up reminders</div>
+                    <div className="text-sm text-gray-600">AI-powered timing for optimal engagement</div>
+                    <Button size="sm" className="mt-2" variant="outline">Configure</Button>
+                  </div>
+                  <div className="p-3 bg-purple-50 rounded-lg">
+                    <div className="font-medium">Predictive lead scoring</div>
+                    <div className="text-sm text-gray-600">Automatically score leads based on behavior</div>
+                    <Button size="sm" className="mt-2" variant="outline">Enable</Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="analytics" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">Conversion Rate</p>
+                    <p className="text-2xl font-bold">24.5%</p>
+                  </div>
+                  <TrendingUp className="w-8 h-8 text-green-500" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">Avg Deal Size</p>
+                    <p className="text-2xl font-bold">$12.4K</p>
+                  </div>
+                  <DollarSign className="w-8 h-8 text-blue-500" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">Sales Velocity</p>
+                    <p className="text-2xl font-bold">18 days</p>
+                  </div>
+                  <Clock className="w-8 h-8 text-orange-500" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">AI Accuracy</p>
+                    <p className="text-2xl font-bold">87%</p>
+                  </div>
+                  <Target className="w-8 h-8 text-purple-500" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Performance Trends</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={[
+                    { month: 'Jan', performance: 65, predictions: 70 },
+                    { month: 'Feb', performance: 72, predictions: 75 },
+                    { month: 'Mar', performance: 68, predictions: 73 },
+                    { month: 'Apr', performance: 78, predictions: 80 },
+                    { month: 'May', performance: 82, predictions: 85 },
+                    { month: 'Jun', performance: 87, predictions: 88 }
+                  ]}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="month" />
+                    <YAxis />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="performance" stroke="#3b82f6" name="Actual Performance" />
+                    <Line type="monotone" dataKey="predictions" stroke="#8b5cf6" strokeDasharray="5 5" name="AI Predictions" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {selectedInsight && (
+        <InsightDetail insight={selectedInsight} />
+      )}
+    </div>
+  );
+};
+
+export default AIInsights;

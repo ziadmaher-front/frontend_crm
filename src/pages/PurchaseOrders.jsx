@@ -298,7 +298,7 @@ export default function PurchaseOrders() {
         records={purchaseOrders}
         onRefresh={() => queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] })}
       >
-        {({ selectedRecords, isSelected, handleSelectRecord }) => (
+        {({ isSelected, handleSelectRecord }) => (
           <div className="space-y-4">
             {purchaseOrders.map((po) => (
               <Card 

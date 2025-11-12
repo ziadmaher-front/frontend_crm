@@ -1,4 +1,4 @@
-import React from "react";
+import { memo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -363,3 +363,53 @@ export default function ActivityTimeline({ activities, communications, documents
     </div>
   );
 }
+
+// Memoized ActivityItem component
+const ActivityItem = memo(({ item, index }) => {
+  const IconComponent = ACTIVITY_ICONS[item.type] || FileText;
+  const colorClass = ACTIVITY_COLORS[item.type] || "bg-gray-100 text-gray-700 border-gray-200";
+
+  return (
+    <div className="flex gap-4 group hover:bg-gray-50 p-3 rounded-lg transition-colors">
+      <div className="flex flex-col items-center">
+        <div className={`p-2 rounded-full border ${colorClass}`}>
+          <IconComponent className="w-4 h-4" />
+        </div>
+        {index < timelineItems.length - 1 && (
+          <div className="w-px h-12 bg-gray-200 mt-2" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between">
+          <div>
+            <h4 className="font-medium text-gray-900">{item.subject || item.title}</h4>
+            <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+          </div>
+          <div className="text-xs text-gray-500 ml-4">
+            {format(new Date(item.date), 'MMM dd, HH:mm')}
+          </div>
+        </div>
+        {item.itemType === 'task' && (
+          <Badge variant={item.status === 'Completed' ? 'success' : 'secondary'} className="mt-2">
+            {item.status}
+          </Badge>
+        )}
+      </div>
+    </div>
+  );
+});
+
+// Memoized TimelineSection component
+const TimelineSection = memo(({ title, items, icon: Icon }) => (
+  <div className="space-y-2">
+    <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+      <Icon className="w-4 h-4" />
+      {title} ({items.length})
+    </div>
+    <div className="space-y-1">
+      {items.map((item, index) => (
+        <ActivityItem key={`${item.itemType}-${item.id}`} item={item} index={index} />
+      ))}
+    </div>
+  </div>
+));

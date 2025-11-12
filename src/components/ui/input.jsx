@@ -1,4 +1,5 @@
 import * as React from "react"
+import PropTypes from "prop-types"
 
 import { cn } from "@/lib/utils"
 
@@ -15,5 +16,20 @@ const Input = React.forwardRef(({ className, type, ...props }, ref) => {
   );
 })
 Input.displayName = "Input"
+
+// PropTypes definition
+Input.propTypes = {
+  className: PropTypes.string,
+  type: PropTypes.string,
+  placeholder: PropTypes.string,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  onChange: PropTypes.func,
+  onBlur: PropTypes.func,
+  onFocus: PropTypes.func,
+  disabled: PropTypes.bool,
+  required: PropTypes.bool,
+  name: PropTypes.string,
+  id: PropTypes.string,
+}
 
 export { Input }

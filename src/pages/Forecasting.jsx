@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,6 @@ import {
   Calendar,
   Award,
   AlertCircle,
-  TrendingDown,
   Activity,
   BarChart3,
   Plus
@@ -21,11 +20,6 @@ import {
 import { 
   BarChart, 
   Bar, 
-  LineChart, 
-  Line, 
-  PieChart, 
-  Pie, 
-  Cell,
   XAxis, 
   YAxis, 
   CartesianGrid, 
@@ -37,22 +31,11 @@ import {
 } from "recharts";
 import { format, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, startOfYear, endOfYear } from "date-fns";
 
-const CURRENCY_SYMBOLS = {
-  USD: "$",
-  EGP: "E£",
-  AED: "د.إ",
-  SAR: "﷼"
-};
-
-const COLORS = ['#6366F1', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444'];
-
 export default function Forecasting() {
   const [currentUser, setCurrentUser] = useState(null);
-  const [selectedPeriod, setSelectedPeriod] = useState('quarter');
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [selectedQuarter, setSelectedQuarter] = useState(Math.ceil((new Date().getMonth() + 1) / 3));
-
-  const queryClient = useQueryClient();
+  const [selectedPeriod] = useState('quarter');
+  const [selectedYear] = useState(new Date().getFullYear());
+  const [selectedQuarter] = useState(Math.ceil((new Date().getMonth() + 1) / 3));
 
   useEffect(() => {
     base44.auth.me().then(setCurrentUser);
@@ -457,7 +440,7 @@ export default function Forecasting() {
                   <div>
                     <p className="text-sm text-gray-600 mb-2">Achievement</p>
                     <p className="text-3xl font-bold text-emerald-600">{targetAchievement}%</p>
-                    <div className="w-full bg-gray-200 rounded-full h-3 mt-2">
+                    <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
                       <div 
                         className="bg-gradient-to-r from-emerald-500 to-green-500 h-3 rounded-full transition-all"
                         style={{ width: `${Math.min(targetAchievement, 100)}%` }}

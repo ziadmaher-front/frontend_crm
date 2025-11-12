@@ -1,7 +1,7 @@
 
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +15,6 @@ import {
   Smartphone,
   Linkedin,
   MapPin,
-  User,
   TrendingUp,
   FileText,
   CheckCircle,
@@ -24,10 +23,12 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { PageSkeleton } from "@/components/ui/loading-states";
 import { format } from "date-fns";
 import ActivityTimeline from "../components/ActivityTimeline";
 import SendEmailDialog from "../components/SendEmailDialog";
 import QuickActions from "../components/QuickActions";
+import AIInsights from "../components/AIInsights";
 import CalendarScheduler from "../components/CalendarScheduler"; // New import
 import ClickToCall from "../components/ClickToCall"; // New import
 import WhatsAppSender from "../components/WhatsAppSender"; // New import
@@ -39,9 +40,7 @@ export default function ContactDetails() {
   const urlParams = new URLSearchParams(window.location.search);
   const contactId = urlParams.get('id');
 
-  const queryClient = useQueryClient();
-
-  const { data: contact } = useQuery({
+  const { data: contact, isLoading: contactLoading } = useQuery({
     queryKey: ['contact', contactId],
     queryFn: async () => {
       const contacts = await base44.entities.Contact.list();
@@ -50,7 +49,7 @@ export default function ContactDetails() {
     enabled: !!contactId,
   });
 
-  const { data: account } = useQuery({
+  const { data: account, isLoading: accountLoading } = useQuery({
     queryKey: ['account', contact?.account_id],
     queryFn: async () => {
       const accounts = await base44.entities.Account.list();
@@ -59,7 +58,7 @@ export default function ContactDetails() {
     enabled: !!contact?.account_id,
   });
 
-  const { data: activities = [] } = useQuery({
+  const { data: activities = [], isLoading: activitiesLoading } = useQuery({
     queryKey: ['activities', contactId],
     queryFn: async () => {
       const all = await base44.entities.Activity.list('-activity_date');
@@ -68,7 +67,7 @@ export default function ContactDetails() {
     enabled: !!contactId,
   });
 
-  const { data: tasks = [] } = useQuery({
+  const { data: tasks = [], isLoading: tasksLoading } = useQuery({
     queryKey: ['tasks', contactId],
     queryFn: async () => {
       const all = await base44.entities.Task.list('-created_date');
@@ -77,7 +76,7 @@ export default function ContactDetails() {
     enabled: !!contactId,
   });
 
-  const { data: communications = [] } = useQuery({
+  const { data: communications = [], isLoading: communicationsLoading } = useQuery({
     queryKey: ['communications', contactId],
     queryFn: async () => {
       const all = await base44.entities.Communication.list('-created_date');
@@ -86,7 +85,7 @@ export default function ContactDetails() {
     enabled: !!contactId,
   });
 
-  const { data: documents = [] } = useQuery({
+  const { data: documents = [], isLoading: documentsLoading } = useQuery({
     queryKey: ['documents', contactId],
     queryFn: async () => {
       const all = await base44.entities.Document.list('-created_date');
@@ -95,7 +94,7 @@ export default function ContactDetails() {
     enabled: !!contactId,
   });
 
-  const { data: deals = [] } = useQuery({
+  const { data: deals = [], isLoading: dealsLoading } = useQuery({
     queryKey: ['deals', contactId],
     queryFn: async () => {
       const all = await base44.entities.Deal.list();
@@ -104,10 +103,17 @@ export default function ContactDetails() {
     enabled: !!contactId,
   });
 
-  const { data: users = [] } = useQuery({
+  const { data: users = [], isLoading: usersLoading } = useQuery({
     queryKey: ['users'],
     queryFn: () => base44.entities.User.list(),
   });
+
+  // Combined loading state
+  const isLoading = contactLoading || accountLoading || activitiesLoading || tasksLoading || communicationsLoading || documentsLoading || dealsLoading || usersLoading;
+
+  if (isLoading) {
+    return <PageSkeleton />;
+  }
 
   if (!contact) {
     return (
@@ -118,7 +124,7 @@ export default function ContactDetails() {
               <ArrowLeft className="w-5 h-5" />
             </Button>
           </Link>
-          <h1 className="text-2xl font-bold">Loading...</h1>
+          <h1 className="text-2xl font-bold">Contact not found</h1>
         </div>
       </div>
     );
@@ -190,6 +196,19 @@ export default function ContactDetails() {
       <div className="p-6 lg:p-8 max-w-7xl mx-auto">
         <div className="grid grid-cols-3 gap-6">
           <div className="col-span-2 space-y-6">
+            {/* AI Insights */}
+            <AIInsights 
+              entity={contact} 
+              entityType="Contact"
+              data={{ 
+                contacts: [contact], 
+                account: account,
+                deals: deals,
+                activities: activities,
+                tasks: tasks
+              }}
+            />
+
             <div className="grid grid-cols-4 gap-4">
               <Card className="border-none shadow-md">
                 <CardContent className="p-4">

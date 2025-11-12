@@ -22,7 +22,7 @@ import {
   VolumeX,
   Pause,
   Play,
-  Record,
+  Circle,
   Square,
   Users,
   Clock,
@@ -340,7 +340,7 @@ const TelephonySystem = () => {
           </Badge>
           {call.recording && (
             <Badge variant="outline" className="text-xs">
-              <Record className="h-3 w-3 mr-1" />
+              <Circle className="h-3 w-3 mr-1" />
               Recorded
             </Badge>
           )}
@@ -479,7 +479,7 @@ const TelephonySystem = () => {
                       onClick={() => setIsRecording(!isRecording)}
                       className="rounded-full h-10 w-10"
                     >
-                      {isRecording ? <Square className="h-4 w-4" /> : <Record className="h-4 w-4" />}
+                      {isRecording ? <Square className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
                     </Button>
                     
                     <Button

@@ -9,7 +9,6 @@ import {
   Plus, 
   Megaphone,
   Edit,
-  TrendingUp,
   Users,
   DollarSign,
   Target
@@ -216,9 +215,6 @@ export default function Campaigns() {
         {campaigns.map((campaign) => {
           const roi = campaign.actual_cost > 0 
             ? (((campaign.expected_revenue || 0) - campaign.actual_cost) / campaign.actual_cost * 100).toFixed(1)
-            : 0;
-          const conversionRate = campaign.total_leads > 0
-            ? ((campaign.converted_leads || 0) / campaign.total_leads * 100).toFixed(1)
             : 0;
 
           return (

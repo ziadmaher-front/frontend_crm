@@ -1,8 +1,9 @@
 
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ActivityService } from "@/services/activityService";
+import { useToast } from "@/components/ui/use-toast";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -37,8 +38,13 @@ import VisitCheckIn from "../components/VisitCheckIn"; // Added VisitCheckIn imp
 
 export default function Activities() {
   const [showDialog, setShowDialog] = useState(false);
-  const [showVisitDialog, setShowVisitDialog] = useState(false); // Added new state
-  const [selectedVisit, setSelectedVisit] = useState(null); // Added new state
+  const [showVisitDialog, setShowVisitDialog] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [selectedVisit, setSelectedVisit] = useState(null);
+  const [editingActivity, setEditingActivity] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterType, setFilterType] = useState("all");
   const [formData, setFormData] = useState({
     activity_type: "Call",
     subject: "",
@@ -50,20 +56,106 @@ export default function Activities() {
   });
 
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
-  const { data: activities = [] } = useQuery({
-    queryKey: ['activities'],
-    queryFn: () => base44.entities.Activity.list('-activity_date'),
+  // Fetch activities with enhanced filtering
+  const { data: activities = [], isLoading: activitiesLoading } = useQuery({
+    queryKey: ['activities', searchTerm, filterStatus, filterType],
+    queryFn: () => ActivityService.getActivities({
+      search: searchTerm || undefined,
+      filterBy: buildFilterQuery(),
+    }),
+  });
+
+  // Fetch activity analytics
+  const { data: analytics } = useQuery({
+    queryKey: ['activity-analytics'],
+    queryFn: () => ActivityService.getActivityAnalytics(),
+    enabled: showAnalytics,
+  });
+
+  // Fetch upcoming activities
+  const { data: upcomingActivities = [] } = useQuery({
+    queryKey: ['upcoming-activities'],
+    queryFn: () => ActivityService.getUpcomingActivities(7),
   });
 
   const createMutation = useMutation({
-    mutationFn: (data) => base44.entities.Activity.create(data),
+    mutationFn: (data) => editingActivity 
+      ? ActivityService.updateActivity(editingActivity.id, data)
+      : ActivityService.createActivity(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['activities'] });
+      queryClient.invalidateQueries({ queryKey: ['upcoming-activities'] });
+      toast({
+        title: "Success",
+        description: editingActivity ? "Activity updated successfully" : "Activity created successfully",
+      });
       setShowDialog(false);
+      setEditingActivity(null);
       resetForm();
     },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save activity",
+        variant: "destructive",
+      });
+    },
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => ActivityService.deleteActivity(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['activities'] });
+      queryClient.invalidateQueries({ queryKey: ['upcoming-activities'] });
+      toast({
+        title: "Success",
+        description: "Activity deleted successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete activity",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const completeMutation = useMutation({
+    mutationFn: ({ id, completionData }) => ActivityService.completeActivity(id, completionData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['activities'] });
+      queryClient.invalidateQueries({ queryKey: ['upcoming-activities'] });
+      toast({
+        title: "Success",
+        description: "Activity marked as completed",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to complete activity",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Business logic functions
+  const buildFilterQuery = () => {
+    const filters = [];
+    
+    if (filterStatus !== "all") {
+      filters.push(`status=${filterStatus}`);
+    }
+    
+    if (filterType !== "all") {
+      filters.push(`activity_type=${filterType}`);
+    }
+    
+    return filters.join('&');
+  };
 
   const resetForm = () => {
     setFormData({
@@ -79,13 +171,79 @@ export default function Activities() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    
+    // Validate form data
+    if (!formData.subject.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Subject is required",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     createMutation.mutate(formData);
   };
 
-  const handleViewVisit = (activity) => { // Added handleViewVisit function
+  const handleEdit = (activity) => {
+    setEditingActivity(activity);
+    setFormData({
+      activity_type: activity.activity_type,
+      subject: activity.subject,
+      description: activity.description || "",
+      activity_date: activity.activity_date.slice(0, 16),
+      duration_minutes: activity.duration_minutes || 30,
+      outcome: activity.outcome || "Successful",
+      status: activity.status || "Scheduled",
+    });
+    setShowDialog(true);
+  };
+
+  const handleDelete = (activityId) => {
+    if (window.confirm("Are you sure you want to delete this activity?")) {
+      deleteMutation.mutate(activityId);
+    }
+  };
+
+  const handleComplete = (activity) => {
+    const completionData = {
+      outcome: "Successful",
+      completed_date: new Date().toISOString(),
+    };
+    
+    completeMutation.mutate({ id: activity.id, completionData });
+  };
+
+  const handleViewVisit = (activity) => {
     setSelectedVisit(activity);
     setShowVisitDialog(true);
   };
+
+  const handleLoadTemplate = (template) => {
+    setFormData({
+      ...formData,
+      activity_type: template.activity_type,
+      subject: template.subject,
+      description: template.description,
+      duration_minutes: template.duration_minutes,
+    });
+    setShowDialog(true);
+  };
+
+  const handleClearFilters = () => {
+    setSearchTerm("");
+    setFilterStatus("all");
+    setFilterType("all");
+  };
+
+  // Filter activities based on search and filters
+  const filteredActivities = activities.filter(activity => {
+    const matchesSearch = !searchTerm || 
+      activity.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      activity.description?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    return matchesSearch;
+  });
 
   const activityIcons = {
     'Call': Phone,
@@ -112,8 +270,8 @@ export default function Activities() {
     'No Answer': 'bg-gray-100 text-gray-800',
   };
 
-  // Group activities by date
-  const groupedActivities = activities.reduce((groups, activity) => {
+  // Group filtered activities by date
+  const groupedActivities = filteredActivities.reduce((groups, activity) => {
     const date = format(new Date(activity.activity_date), 'yyyy-MM-dd');
     if (!groups[date]) {
       groups[date] = [];
@@ -122,33 +280,138 @@ export default function Activities() {
     return groups;
   }, {});
 
+  // Get activity templates
+  const activityTemplates = ActivityService.getActivityTemplates();
+
   return (
     <div className="p-6 lg:p-8 space-y-6">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+      <div className="crm-page-header">
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent flex items-center gap-2">
-            <Activity className="w-8 h-8 text-orange-500" />
+          <h1 className="crm-page-title">
+            <Activity className="w-8 h-8" />
             Activities
           </h1>
-          <p className="text-gray-500 mt-1">Track all your interactions and engagements</p>
+          <p className="crm-page-subtitle">Track all your interactions and engagements</p>
         </div>
-        <Button 
-          onClick={() => {
-            resetForm();
-            setShowDialog(true);
-          }}
-          className="bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 shadow-lg"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Log Activity
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline"
+            onClick={() => setShowAnalytics(!showAnalytics)}
+          >
+            Analytics
+          </Button>
+          <Button 
+            onClick={() => {
+              resetForm();
+              setEditingActivity(null);
+              setShowDialog(true);
+            }}
+            className="crm-btn-primary"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Log Activity
+          </Button>
+        </div>
       </div>
 
+      {/* Filters */}
+      <Card className="border-none shadow-md">
+        <CardContent className="p-4">
+          <div className="flex flex-wrap gap-4 items-center">
+            <div className="flex-1 min-w-[200px]">
+              <Input
+                placeholder="Search activities..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="Scheduled">Scheduled</SelectItem>
+                <SelectItem value="Completed">Completed</SelectItem>
+                <SelectItem value="Cancelled">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={filterType} onValueChange={setFilterType}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="Call">Call</SelectItem>
+                <SelectItem value="Meeting">Meeting</SelectItem>
+                <SelectItem value="Email">Email</SelectItem>
+                <SelectItem value="Task">Task</SelectItem>
+                <SelectItem value="Note">Note</SelectItem>
+                <SelectItem value="Visit">Visit</SelectItem>
+              </SelectContent>
+            </Select>
+            {(searchTerm || filterStatus !== "all" || filterType !== "all") && (
+              <Button variant="outline" onClick={handleClearFilters}>
+                Clear Filters
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Analytics Section */}
+      {showAnalytics && analytics && (
+        <Card className="border-none shadow-md">
+          <CardContent className="p-6">
+            <h3 className="text-lg font-semibold mb-4">Activity Analytics</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="text-center">
+                <p className="text-2xl font-bold text-blue-600">{analytics.total}</p>
+                <p className="text-sm text-gray-500">Total Activities</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-green-600">{analytics.completed}</p>
+                <p className="text-sm text-gray-500">Completed</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-orange-600">{analytics.completionRate}%</p>
+                <p className="text-sm text-gray-500">Completion Rate</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-purple-600">{analytics.successRate}%</p>
+                <p className="text-sm text-gray-500">Success Rate</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Quick Templates */}
+      <Card className="border-none shadow-md">
+        <CardContent className="p-4">
+          <h3 className="text-sm font-medium mb-3">Quick Templates</h3>
+          <div className="flex flex-wrap gap-2">
+            {activityTemplates.map((template) => (
+              <Button
+                key={template.id}
+                variant="outline"
+                size="sm"
+                onClick={() => handleLoadTemplate(template)}
+                className="text-xs"
+              >
+                {template.name}
+              </Button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-4"> {/* Adjusted grid-cols to 6 for 'Visit' */}
-        {['Call', 'Meeting', 'Email', 'Task', 'Note', 'Visit'].map((type) => { // Added 'Visit' to the types
-          const count = activities.filter(a => a.activity_type === type).length;
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+        {['Call', 'Meeting', 'Email', 'Task', 'Note', 'Visit'].map((type) => {
+          const count = filteredActivities.filter(a => a.activity_type === type).length;
           const Icon = activityIcons[type];
           return (
             <Card key={type} className="border-none shadow-md">
@@ -186,12 +449,7 @@ export default function Activities() {
                 return (
                   <Card 
                     key={activity.id} 
-                    className="border-none shadow-md hover:shadow-lg transition-all cursor-pointer" // Added cursor-pointer
-                    onClick={() => {
-                      if (activity.activity_type === 'Visit') {
-                        handleViewVisit(activity);
-                      }
-                    }}
+                    className="border-none shadow-md hover:shadow-lg transition-all"
                   >
                     <CardContent className="p-5">
                       <div className="flex gap-4">
@@ -216,6 +474,11 @@ export default function Activities() {
                                   {activity.outcome}
                                 </Badge>
                               )}
+                              {activity.status && (
+                                <Badge variant={activity.status === 'Completed' ? 'default' : 'secondary'}>
+                                  {activity.status}
+                                </Badge>
+                              )}
                               {activity.activity_type === 'Visit' && activity.checked_in && !activity.checked_out && (
                                 <Badge className="bg-blue-100 text-blue-700">
                                   In Progress
@@ -226,15 +489,67 @@ export default function Activities() {
                           {activity.description && (
                             <p className="text-gray-600 mt-2">{activity.description}</p>
                           )}
-                          <div className="flex gap-4 mt-3 text-sm text-gray-500">
-                            <span>Status: {activity.status}</span>
-                            {activity.created_by && (
-                              <span>By: {activity.created_by}</span>
-                            )}
+                          <div className="flex justify-between items-center mt-3">
+                            <div className="flex gap-4 text-sm text-gray-500">
+                              <span>Status: {activity.status}</span>
+                              {activity.created_by && (
+                                <span>By: {activity.created_by}</span>
+                              )}
+                            </div>
+                            <div className="flex gap-2">
+                              {activity.activity_type === 'Visit' && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleViewVisit(activity);
+                                  }}
+                                >
+                                  <MapPin className="w-4 h-4 mr-1" />
+                                  View Visit
+                                </Button>
+                              )}
+                              {activity.status === 'Scheduled' && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleComplete(activity);
+                                  }}
+                                  disabled={completeMutation.isLoading}
+                                >
+                                  Complete
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEdit(activity);
+                                }}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDelete(activity.id);
+                                }}
+                                disabled={deleteMutation.isLoading}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                Delete
+                              </Button>
+                            </div>
                           </div>
                           {activity.activity_type === 'Visit' && (activity.start_location || activity.end_location) && (
                             <div className="mt-2 text-xs text-blue-600">
-                              📍 Location data available - Click to view
+                              📍 Location data available - Click "View Visit" to see details
                             </div>
                           )}
                         </div>
@@ -258,11 +573,11 @@ export default function Activities() {
         </Card>
       )}
 
-      {/* Add Dialog */}
+      {/* Add/Edit Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Log New Activity</DialogTitle>
+            <DialogTitle>{editingActivity ? 'Edit Activity' : 'Log New Activity'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
@@ -357,8 +672,12 @@ export default function Activities() {
               <Button type="button" variant="outline" onClick={() => setShowDialog(false)}>
                 Cancel
               </Button>
-              <Button type="submit" className="bg-gradient-to-r from-orange-600 to-amber-600">
-                Log Activity
+              <Button 
+                type="submit" 
+                className="bg-gradient-to-r from-orange-600 to-amber-600"
+                disabled={createMutation.isPending}
+              >
+                {createMutation.isPending ? 'Saving...' : (editingActivity ? 'Update Activity' : 'Log Activity')}
               </Button>
             </DialogFooter>
           </form>

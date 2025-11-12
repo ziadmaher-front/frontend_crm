@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -11,7 +11,6 @@ import {
   FileText,
   TrendingUp,
   ShoppingCart,
-  Eye,
   ThumbsUp,
   ThumbsDown
 } from "lucide-react";
@@ -27,12 +26,14 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { useApiErrorHandler } from '@/hooks/useErrorHandler';
 
 export default function Approvals() {
   const [currentUser, setCurrentUser] = useState(null);
   const [showDialog, setShowDialog] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [comments, setComments] = useState("");
+  const { handleApiError } = useApiErrorHandler();
 
   React.useEffect(() => {
     base44.auth.me().then(setCurrentUser);
@@ -45,27 +46,21 @@ export default function Approvals() {
     queryFn: () => base44.entities.ApprovalRequest.list('-submitted_date'),
   });
 
-  const { data: quotes = [] } = useQuery({
-    queryKey: ['quotes'],
-    queryFn: () => base44.entities.Quote.list(),
-  });
-
-  const { data: deals = [] } = useQuery({
-    queryKey: ['deals'],
-    queryFn: () => base44.entities.Deal.list(),
-  });
-
   const approveMutation = useMutation({
     mutationFn: async ({ requestId, action, comments }) => {
       const request = approvalRequests.find(r => r.id === requestId);
-      const newHistory = [...(request.approval_history || []), {
-        step_number: request.current_step,
-        approver_email: currentUser.email,
-        approver_name: currentUser.full_name,
-        action: action,
-        comments: comments,
-        timestamp: new Date().toISOString(),
-      }];
+      if (!request) throw new Error('Request not found');
+
+      const newHistory = [
+        ...request.approval_history,
+        {
+          step: request.current_step,
+          approver: currentUser?.name || 'Current User',
+          action: action,
+          comments: comments,
+          timestamp: new Date().toISOString(),
+        }
+      ];
 
       const updates = {
         approval_history: newHistory,
@@ -97,6 +92,9 @@ export default function Approvals() {
       setComments("");
       toast.success("Request processed");
     },
+    onError: (error) => {
+      handleApiError(error, 'approval-process');
+    }
   });
 
   const handleApprove = () => {

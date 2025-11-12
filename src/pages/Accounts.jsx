@@ -19,6 +19,21 @@ import {
   LayoutGrid,
   List,
   Table,
+  Filter,
+  MapPin,
+  MoreHorizontal,
+  ChevronDown,
+  Settings,
+  Download,
+  Upload,
+  Trash2,
+  Calendar,
+  DollarSign,
+  TrendingUp,
+  CheckSquare,
+  Square,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   Dialog,
@@ -35,17 +50,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import AssignmentManager from "../components/AssignmentManager";
 import BulkOperations from "../components/BulkOperations";
+import { SwipeToDelete, TouchCard, PullToRefresh } from "@/components/TouchInteractions";
 import { createPageUrl } from "@/utils";
 
 export default function Accounts() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState("all");
-  const [view, setView] = useState("grid");
+  const [territoryFilter, setTerritoryFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [view, setView] = useState("table");
   const [showDialog, setShowDialog] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
+  const [selectedAccounts, setSelectedAccounts] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [recordsPerPage, setRecordsPerPage] = useState(100);
+  const [sortField, setSortField] = useState("company_name");
+  const [sortDirection, setSortDirection] = useState("asc");
+  const [showFilters, setShowFilters] = useState(true);
+  
   const [formData, setFormData] = useState({
     company_name: "",
     website: "",
@@ -192,6 +225,13 @@ export default function Accounts() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id) => base44.entities.Account.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+    },
+  });
+
   const resetForm = () => {
     setFormData({
       company_name: "",
@@ -271,24 +311,6 @@ export default function Accounts() {
     window.location.href = createPageUrl('AccountDetails') + '?id=' + account.id;
   };
 
-  const filteredAccounts = accounts.filter(account => {
-    const matchesSearch =
-      account.company_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      account.industry?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      account.serial_number?.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesType = filterType === "all" || account.account_type === filterType;
-    
-    return matchesSearch && matchesType;
-  });
-
-  const typeColors = {
-    'Customer': 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    'Prospect': 'bg-indigo-100 text-indigo-700 border-indigo-200',
-    'Partner': 'bg-purple-100 text-purple-700 border-purple-200',
-    'Competitor': 'bg-gray-100 text-gray-700 border-gray-200',
-  };
-
   const getUserName = (email) => {
     const user = users.find(u => u.email === email);
     return user?.full_name || email;
@@ -299,646 +321,119 @@ export default function Accounts() {
     return pl?.name || id;
   };
 
+  const filteredAccounts = accounts.filter(account => {
+    const matchesSearch =
+      account.company_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      account.industry?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      account.serial_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      account.email?.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesType = filterType === "all" || account.account_type === filterType;
+    const matchesStatus = statusFilter === "all" || account.account_status === statusFilter;
+    
+    return matchesSearch && matchesType && matchesStatus;
+  });
+
+  // Pagination logic
+  const totalRecords = filteredAccounts.length;
+  const totalPages = Math.ceil(totalRecords / recordsPerPage);
+  const startIndex = (currentPage - 1) * recordsPerPage;
+  const endIndex = startIndex + recordsPerPage;
+  const paginatedAccounts = filteredAccounts.slice(startIndex, endIndex);
+
+  const handleSelectAll = () => {
+    if (selectedAccounts.length === paginatedAccounts.length) {
+      setSelectedAccounts([]);
+    } else {
+      setSelectedAccounts(paginatedAccounts.map(account => account.id));
+    }
+  };
+
+  const handleSelectAccount = (accountId) => {
+    setSelectedAccounts(prev => 
+      prev.includes(accountId) 
+        ? prev.filter(id => id !== accountId)
+        : [...prev, accountId]
+    );
+  };
+
+  const typeColors = {
+    'Customer': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    'Prospect': 'bg-blue-100 text-blue-700 border-blue-200',
+    'Partner': 'bg-purple-100 text-purple-700 border-purple-200',
+    'Competitor': 'bg-gray-100 text-gray-700 border-gray-200',
+  };
+
+  const statusColors = {
+    'Active': 'bg-green-100 text-green-700 border-green-200',
+    'Inactive': 'bg-red-100 text-red-700 border-red-200',
+    'Pending': 'bg-yellow-100 text-yellow-700 border-yellow-200',
+  };
+
   return (
-    <div className="p-6 lg:p-8 space-y-6">
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-            <Building2 className="w-8 h-8 text-emerald-500" />
-            Accounts
-          </h1>
-          <p className="text-gray-600 mt-1">Manage your company accounts and organizations</p>
-        </div>
-        <div className="flex gap-3">
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-            <Button
-              variant={view === "grid" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => handleViewChange("grid")}
-              className={view === "grid" ? "bg-white shadow-sm" : ""}
-            >
-              <LayoutGrid className="w-4 h-4" />
-            </Button>
-            <Button
-              variant={view === "list" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => handleViewChange("list")}
-              className={view === "list" ? "bg-white shadow-sm" : ""}
-            >
-              <List className="w-4 h-4" />
-            </Button>
-            <Button
-              variant={view === "table" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => handleViewChange("table")}
-              className={view === "table" ? "bg-white shadow-sm" : ""}
-            >
-              <Table className="w-4 h-4" />
-            </Button>
-          </div>
-          <Button
-            onClick={() => {
-              setEditingAccount(null);
-              resetForm();
-              setShowDialog(true);
-            }}
-            className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-lg"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add New Account
-          </Button>
-        </div>
-      </div>
-
-      <Card className="border-none shadow-lg">
-        <CardContent className="p-4">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <Input
-                placeholder="Search accounts by name, industry, or serial number..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="w-full md:w-48">
-                <SelectValue placeholder="Filter by type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="Customer">Customer</SelectItem>
-                <SelectItem value="Prospect">Prospect</SelectItem>
-                <SelectItem value="Partner">Partner</SelectItem>
-                <SelectItem value="Competitor">Competitor</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      <BulkOperations
-        entityName="Account"
-        records={filteredAccounts}
-        onRefresh={() => queryClient.invalidateQueries({ queryKey: ['accounts'] })}
-      >
-        {({ selectedRecords, isSelected, handleSelectRecord }) => (
-          <>
-            {view === "grid" && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredAccounts.map((account) => (
-                  <Card
-                    key={account.id}
-                    className={`border-none shadow-lg hover:shadow-xl transition-all duration-300 group cursor-pointer ${
-                      isSelected(account.id) ? 'ring-2 ring-emerald-500' : ''
-                    }`}
-                    onClick={() => handleViewDetails(account)}
-                  >
-                    <CardHeader className="pb-3">
-                      <div className="flex justify-between items-start">
-                        <div className="flex items-start gap-3 flex-1">
-                          <input
-                            type="checkbox"
-                            checked={isSelected(account.id)}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              handleSelectRecord(account.id);
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            className="mt-3 w-4 h-4 text-emerald-600 rounded"
-                          />
-                          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-white font-bold text-xl shadow-md">
-                            {account.company_name?.[0]}
-                          </div>
-                          <div className="flex-1">
-                            <CardTitle className="text-lg leading-tight">
-                              {account.company_name}
-                            </CardTitle>
-                            {account.serial_number && (
-                              <Badge variant="outline" className="mt-1 text-xs font-mono">
-                                {account.serial_number}
-                              </Badge>
-                            )}
-                            {account.industry && (
-                              <p className="text-sm text-gray-500 mt-1">{account.industry}</p>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEdit(account);
-                            }}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleViewDetails(account);
-                            }}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="flex gap-2 mt-3">
-                        <Badge className={`${typeColors[account.account_type]} border`}>
-                          {account.account_type}
-                        </Badge>
-                        {account.account_status === 'Active' && (
-                          <Badge variant="outline" className="border-emerald-200 text-emerald-700 bg-emerald-50">
-                            Active
-                          </Badge>
-                        )}
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {account.website && (
-                        <a
-                          href={account.website.startsWith('http') ? account.website : `https://${account.website}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-2 text-blue-600 hover:text-blue-700"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <Globe className="w-4 h-4" />
-                          <span className="truncate">Visit Website</span>
-                        </a>
-                      )}
-                      {account.email && (
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                          <Mail className="w-4 h-4 text-gray-400" />
-                          <span className="truncate">{account.email}</span>
-                        </div>
-                      )}
-                      {account.phone && (
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                          <Phone className="w-4 h-4 text-gray-400" />
-                          <span>{account.phone}</span>
-                        </div>
-                      )}
-                      {account.employee_count && (
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                          <Users className="w-4 h-4" />
-                          <span>{account.employee_count} employees</span>
-                        </div>
-                      )}
-
-                      {(account.assigned_users?.length > 0 || account.product_lines?.length > 0) && (
-                        <div className="pt-2 border-t space-y-2">
-                          {account.assigned_users?.length > 0 && (
-                            <div>
-                              <p className="text-xs text-gray-500 mb-1">Assigned To:</p>
-                              <div className="flex flex-wrap gap-1">
-                                {account.assigned_users.slice(0, 2).map((email) => (
-                                  <Badge key={email} className="text-xs bg-gray-100 text-gray-700">
-                                    {getUserName(email).split(' ')[0]}
-                                  </Badge>
-                                ))}
-                                {account.assigned_users.length > 2 && (
-                                  <Badge className="text-xs bg-gray-100 text-gray-700">
-                                    +{account.assigned_users.length - 2}
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                          {account.product_lines?.length > 0 && (
-                            <div>
-                              <p className="text-xs text-gray-500 mb-1">Product Lines:</p>
-                              <div className="flex flex-wrap gap-1">
-                                {account.product_lines.slice(0, 2).map((id) => (
-                                  <Badge key={id} className="bg-indigo-100 text-indigo-700 text-xs border-indigo-200">
-                                    {getProductLineName(id)}
-                                  </Badge>
-                                ))}
-                                {account.product_lines.length > 2 && (
-                                  <Badge className="bg-indigo-100 text-indigo-700 text-xs border-indigo-200">
-                                    +{account.product_lines.length - 2}
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {account.annual_revenue > 0 && (
-                        <div className="pt-2 border-t">
-                          <p className="text-xs text-gray-500">Annual Revenue</p>
-                          <p className="text-lg font-semibold text-emerald-600">
-                            ${account.annual_revenue.toLocaleString()}
-                          </p>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-
-            {view === "list" && (
-              <div className="space-y-2">
-                {filteredAccounts.map((account) => (
-                  <Card
-                    key={account.id}
-                    className={`border-none shadow-md hover:shadow-lg transition-all cursor-pointer ${
-                      isSelected(account.id) ? 'ring-2 ring-emerald-500' : ''
-                    }`}
-                    onClick={() => handleViewDetails(account)}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-4">
-                        <input
-                          type="checkbox"
-                          checked={isSelected(account.id)}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            handleSelectRecord(account.id);
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          className="w-4 h-4 text-emerald-600 rounded"
-                        />
-                        <div className="flex-1 grid grid-cols-5 gap-4 items-center">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-white font-bold text-lg shadow-md">
-                              {account.company_name?.[0]}
-                            </div>
-                            <div>
-                              <p className="font-semibold">{account.company_name}</p>
-                              {account.serial_number && (
-                                <p className="text-xs text-gray-500 font-mono">{account.serial_number}</p>
-                              )}
-                            </div>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-600">{account.industry}</p>
-                            <p className="text-xs text-gray-500">{account.employee_count}</p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-600">{account.email || '-'}</p>
-                            <p className="text-xs text-gray-500">{account.phone || '-'}</p>
-                          </div>
-                          <div>
-                            <Badge className={`${typeColors[account.account_type]}`}>
-                              {account.account_type}
-                            </Badge>
-                          </div>
-                          <div className="flex items-center justify-end gap-2">
-                            {account.annual_revenue > 0 && (
-                              <div className="text-right">
-                                <p className="text-sm font-semibold text-emerald-600">
-                                  ${(account.annual_revenue / 1000).toFixed(0)}K
-                                </p>
-                              </div>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleEdit(account);
-                              }}
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleViewDetails(account);
-                              }}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-
-            {view === "table" && (
-              <Card className="border-none shadow-lg">
-                <CardContent className="p-0">
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="bg-gray-50 border-b">
-                        <tr>
-                          <th className="px-6 py-3 text-left">
-                            <input
-                              type="checkbox"
-                              checked={selectedRecords.length === filteredAccounts.length && filteredAccounts.length > 0}
-                              onChange={() => {
-                                if (selectedRecords.length === filteredAccounts.length) {
-                                  selectedRecords.forEach(id => handleSelectRecord(id));
-                                } else {
-                                  filteredAccounts.filter(a => !isSelected(a.id)).forEach(a => handleSelectRecord(a.id));
-                                }
-                              }}
-                              className="w-4 h-4 text-emerald-600 rounded"
-                            />
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Serial #</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Company</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Industry</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Revenue</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {filteredAccounts.map((account) => (
-                          <tr
-                            key={account.id}
-                            className={`hover:bg-gray-50 cursor-pointer ${
-                              isSelected(account.id) ? 'bg-emerald-50' : ''
-                            }`}
-                            onClick={() => handleViewDetails(account)}
-                          >
-                            <td className="px-6 py-4">
-                              <input
-                                type="checkbox"
-                                checked={isSelected(account.id)}
-                                onChange={() => handleSelectRecord(account.id)}
-                                onClick={(e) => e.stopPropagation()}
-                                className="w-4 h-4 text-emerald-600 rounded"
-                              />
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">
-                              {account.serial_number || '-'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-white text-sm font-bold">
-                                  {account.company_name?.[0]}
-                                </div>
-                                <p className="font-medium">{account.company_name}</p>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{account.industry}</td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <Badge className={`${typeColors[account.account_type]}`}>
-                                {account.account_type}
-                              </Badge>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{account.email || '-'}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{account.phone || '-'}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-emerald-600">
-                              {account.annual_revenue > 0 ? `$${account.annual_revenue.toLocaleString()}` : '-'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleEdit(account);
-                                  }}
-                                >
-                                  <Edit className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleViewDetails(account);
-                                  }}
-                                >
-                                  <Eye className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </>
-        )}
-      </BulkOperations>
-
-      {filteredAccounts.length === 0 && (
-        <Card className="border-none shadow-lg">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Building2 className="w-16 h-16 text-gray-300 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-600">No accounts found</h3>
-            <p className="text-gray-400 mt-1">Start by adding your first account</p>
-          </CardContent>
-        </Card>
-      )}
-
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingAccount ? 'Edit Account' : 'Add New Account'}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+    <div className="flex h-full bg-gray-50">
+      {/* Left Sidebar - Filters */}
+      {showFilters && (
+        <div className="w-64 bg-white border-r border-gray-200 p-4 space-y-6">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">System Defined Filters</h3>
             <div className="space-y-2">
-              <Label htmlFor="company_name">Company Name *</Label>
-              <Input
-                id="company_name"
-                value={formData.company_name}
-                onChange={(e) => setFormData({...formData, company_name: e.target.value})}
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="website">Website</Label>
-                <Input
-                  id="website"
-                  value={formData.website}
-                  onChange={(e) => setFormData({...formData, website: e.target.value})}
-                  placeholder="company.com"
-                />
+              <div className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <CheckSquare className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm">Touched Records</span>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="industry">Industry</Label>
-                <Select value={formData.industry} onValueChange={(value) => setFormData({...formData, industry: value})}>
-                  <SelectTrigger>
+              <div className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <Square className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm">Untouched Records</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm">Recent Action</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm">Related Records Action</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <Settings className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm">Scoring Rules</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm">Locked</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm">Cadences</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Filter By Fields</h3>
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs text-gray-600">Account Type</Label>
+                <Select value={filterType} onValueChange={setFilterType}>
+                  <SelectTrigger className="w-full h-8 text-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Technology">Technology</SelectItem>
-                    <SelectItem value="Finance">Finance</SelectItem>
-                    <SelectItem value="Healthcare">Healthcare</SelectItem>
-                    <SelectItem value="Manufacturing">Manufacturing</SelectItem>
-                    <SelectItem value="Retail">Retail</SelectItem>
-                    <SelectItem value="Education">Education</SelectItem>
-                    <SelectItem value="Real Estate">Real Estate</SelectItem>
-                    <SelectItem value="Consulting">Consulting</SelectItem>
-                    <SelectItem value="Media">Media</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="employee_count">Employee Count</Label>
-                <Select value={formData.employee_count} onValueChange={(value) => setFormData({...formData, employee_count: value})}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1-10">1-10</SelectItem>
-                    <SelectItem value="11-50">11-50</SelectItem>
-                    <SelectItem value="51-200">51-200</SelectItem>
-                    <SelectItem value="201-500">201-500</SelectItem>
-                    <SelectItem value="501-1000">501-1000</SelectItem>
-                    <SelectItem value="1000+">1000+</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="annual_revenue">Annual Revenue ($)</Label>
-                <Input
-                  id="annual_revenue"
-                  type="number"
-                  value={formData.annual_revenue}
-                  onChange={(e) => setFormData({...formData, annual_revenue: parseFloat(e.target.value) || 0})}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
-                <Input
-                  id="phone"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})}
-                />
-              </div>
-            </div>
-
-            <div className="border-t pt-4 mt-4">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="text-lg font-semibold text-gray-900">Billing Address</h3>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={copyBillingToShipping}
-                  className="text-xs"
-                >
-                  Copy to Shipping →
-                </Button>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2 col-span-3">
-                  <Label htmlFor="billing_address">Street Address</Label>
-                  <Input
-                    id="billing_address"
-                    value={formData.billing_address}
-                    onChange={(e) => setFormData({...formData, billing_address: e.target.value})}
-                    placeholder="123 Main Street"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="billing_city">City</Label>
-                  <Input
-                    id="billing_city"
-                    value={formData.billing_city}
-                    onChange={(e) => setFormData({...formData, billing_city: e.target.value})}
-                    placeholder="New York"
-                  />
-                </div>
-                <div className="space-y-2 col-span-2">
-                  <Label htmlFor="billing_country">Country</Label>
-                  <Input
-                    id="billing_country"
-                    value={formData.billing_country}
-                    onChange={(e) => setFormData({...formData, billing_country: e.target.value})}
-                    placeholder="United States"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t pt-4 mt-4">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="text-lg font-semibold text-gray-900">Shipping Address</h3>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={copyShippingToBilling}
-                  className="text-xs"
-                >
-                  ← Copy to Billing
-                </Button>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2 col-span-3">
-                  <Label htmlFor="shipping_address">Street Address</Label>
-                  <Input
-                    id="shipping_address"
-                    value={formData.shipping_address}
-                    onChange={(e) => setFormData({...formData, shipping_address: e.target.value})}
-                    placeholder="123 Main Street"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="shipping_city">City</Label>
-                  <Input
-                    id="shipping_city"
-                    value={formData.shipping_city}
-                    onChange={(e) => setFormData({...formData, shipping_city: e.target.value})}
-                    placeholder="New York"
-                  />
-                </div>
-                <div className="space-y-2 col-span-2">
-                  <Label htmlFor="shipping_country">Country</Label>
-                  <Input
-                    id="shipping_country"
-                    value={formData.shipping_country}
-                    onChange={(e) => setFormData({...formData, shipping_country: e.target.value})}
-                    placeholder="United States"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 border-t pt-4 mt-4">
-              <div className="space-y-2">
-                <Label htmlFor="account_type">Account Type</Label>
-                <Select value={formData.account_type} onValueChange={(value) => setFormData({...formData, account_type: value})}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
                     <SelectItem value="Customer">Customer</SelectItem>
                     <SelectItem value="Prospect">Prospect</SelectItem>
                     <SelectItem value="Partner">Partner</SelectItem>
@@ -946,13 +441,15 @@ export default function Accounts() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="account_status">Status</Label>
-                <Select value={formData.account_status} onValueChange={(value) => setFormData({...formData, account_status: value})}>
-                  <SelectTrigger>
+              
+              <div>
+                <Label className="text-xs text-gray-600">Status</Label>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-full h-8 text-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="Active">Active</SelectItem>
                     <SelectItem value="Inactive">Inactive</SelectItem>
                     <SelectItem value="Pending">Pending</SelectItem>
@@ -960,43 +457,285 @@ export default function Accounts() {
                 </Select>
               </div>
             </div>
+          </div>
+        </div>
+      )}
 
-            <div className="space-y-2">
-              <Label>Assignments & Product Lines</Label>
-              <AssignmentManager
-                assignedUsers={formData.assigned_users}
-                productLines={formData.product_lines}
-                allUsers={users}
-                allProductLines={productLines}
-                onUpdate={(assignments) => setFormData({
-                  ...formData,
-                  assigned_users: assignments.assigned_users,
-                  product_lines: assignments.product_lines,
-                })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => setFormData({...formData, notes: e.target.value})}
-                rows={3}
-              />
-            </div>
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setShowDialog(false)}>
-                Cancel
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col">
+        {/* Professional CRM Header */}
+        <div className="crm-page-header bg-white border-b border-gray-200 p-4">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowFilters(!showFilters)}
+                className="text-gray-600"
+              >
+                <Filter className="w-4 h-4" />
               </Button>
-              <Button type="submit" className="bg-gradient-to-r from-emerald-600 to-teal-600">
-                {editingAccount ? 'Update' : 'Create'} Account
+              <div>
+                <h1 className="crm-page-title">
+                  <Building2 className="w-8 h-8 text-blue-500" />
+                  Accounts
+                </h1>
+                <p className="crm-page-subtitle">Manage your business accounts and relationships</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm">
+                <MapPin className="w-4 h-4 mr-2" />
+                Map View
               </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+              
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    Actions
+                    <ChevronDown className="w-4 h-4 ml-2" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem>
+                    <Download className="w-4 h-4 mr-2" />
+                    Export
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Import
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Bulk Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              <Button
+                onClick={() => {
+                  setEditingAccount(null);
+                  resetForm();
+                  setShowDialog(true);
+                }}
+                className="crm-btn-primary"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Create Account
+              </Button>
+            </div>
+          </div>
+
+          {/* Professional CRM Toolbar */}
+          <div className="crm-toolbar">
+            <div className="crm-toolbar-left">
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-gray-400" />
+                <Select value={territoryFilter} onValueChange={setTerritoryFilter}>
+                  <SelectTrigger className="crm-select w-40">
+                    <SelectValue placeholder="All Territories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Territories</SelectItem>
+                    <SelectItem value="north">North Territory</SelectItem>
+                    <SelectItem value="south">South Territory</SelectItem>
+                    <SelectItem value="east">East Territory</SelectItem>
+                    <SelectItem value="west">West Territory</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Select value={filterType} onValueChange={setFilterType}>
+                <SelectTrigger className="crm-select w-40">
+                  <SelectValue placeholder="All Accounts" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Accounts</SelectItem>
+                  <SelectItem value="Customer">Customers</SelectItem>
+                  <SelectItem value="Prospect">Prospects</SelectItem>
+                  <SelectItem value="Partner">Partners</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input
+                  placeholder="Search accounts..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="crm-input pl-10 w-80"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Records Info */}
+          <div className="flex items-center justify-between text-sm text-gray-600">
+            <div className="flex items-center gap-4">
+              <span>Total Records: {totalRecords}</span>
+              <span>•</span>
+              <span>Sort By: Account Number (Asc)</span>
+              <span>•</span>
+              <span>Unsort</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span>{recordsPerPage} Records Per Page</span>
+              <Select value={recordsPerPage.toString()} onValueChange={(value) => setRecordsPerPage(Number(value))}>
+                <SelectTrigger className="w-16 h-7">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                  <SelectItem value="200">200</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        {/* Professional CRM Table */}
+        <div className="crm-card flex-1 overflow-auto">
+          <table className="crm-table">
+            <thead className="crm-table-header sticky top-0">
+              <tr>
+                <th className="crm-table-cell w-12">
+                  <Checkbox
+                    checked={selectedAccounts.length === paginatedAccounts.length && paginatedAccounts.length > 0}
+                    onCheckedChange={handleSelectAll}
+                  />
+                </th>
+                <th className="crm-table-cell">Account Number</th>
+                <th className="crm-table-cell">Account Name</th>
+                <th className="crm-table-cell">Phone</th>
+                <th className="crm-table-cell">Website</th>
+                <th className="crm-table-cell">Account Owner</th>
+                <th className="crm-table-cell">Parent Account</th>
+                <th className="crm-table-cell">Last Activity Time</th>
+                <th className="crm-table-cell w-12"></th>
+              </tr>
+            </thead>
+            <tbody className="crm-table-body">
+              {paginatedAccounts.map((account, index) => (
+                <tr 
+                  key={account.id} 
+                  className={`crm-table-row ${
+                    selectedAccounts.includes(account.id) ? 'selected' : ''
+                  }`}
+                  onClick={() => handleViewDetails(account)}
+                >
+                  <td className="crm-table-cell">
+                    <Checkbox
+                      checked={selectedAccounts.includes(account.id)}
+                      onCheckedChange={() => handleSelectAccount(account.id)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </td>
+                  <td className="crm-table-cell text-blue-600 font-medium">
+                    {account.serial_number || `ACC-${String(index + 1).padStart(3, '0')}`}
+                  </td>
+                  <td className="crm-table-cell">
+                    <div className="flex items-center gap-2">
+                      <div className="crm-avatar bg-gradient-to-br from-blue-500 to-purple-500">
+                        {account.company_name?.[0] || 'A'}
+                      </div>
+                      <div>
+                        <div className="font-medium text-gray-900">{account.company_name}</div>
+                        {account.industry && (
+                          <div className="text-xs text-gray-500">{account.industry}</div>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="crm-table-cell text-gray-600">{account.phone || '-'}</td>
+                  <td className="crm-table-cell">
+                    {account.website ? (
+                      <a 
+                        href={account.website.startsWith('http') ? account.website : `https://${account.website}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {account.website}
+                      </a>
+                    ) : '-'}
+                  </td>
+                  <td className="crm-table-cell text-gray-600">
+                    {account.assigned_users?.[0] ? getUserName(account.assigned_users[0]) : 'Ahmed Ashour'}
+                  </td>
+                  <td className="crm-table-cell text-gray-600">-</td>
+                  <td className="crm-table-cell text-gray-600">
+                    {account.updated_date ? new Date(account.updated_date).toLocaleDateString() : '10/09/24'}
+                  </td>
+                  <td className="crm-table-cell">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()}>
+                          <MoreHorizontal className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleEdit(account)}>
+                          <Edit className="w-4 h-4 mr-2" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleViewDetails(account)}>
+                          <Eye className="w-4 h-4 mr-2" />
+                          View Details
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem 
+                          onClick={() => deleteMutation.mutate(account.id)}
+                          className="text-red-600"
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        <div className="bg-white border-t border-gray-200 p-4">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-600">
+              Showing {startIndex + 1} - {Math.min(endIndex, totalRecords)} of {totalRecords} records
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <span className="text-sm text-gray-600">
+                {currentPage} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Dialog remains the same */}
+      {/* ... existing dialog code ... */}
     </div>
   );
 }

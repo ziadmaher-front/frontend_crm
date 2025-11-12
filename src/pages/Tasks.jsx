@@ -139,13 +139,13 @@ export default function Tasks() {
   return (
     <div className="p-6 lg:p-8 space-y-6">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+      <div className="crm-page-header">
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent flex items-center gap-2">
-            <CheckSquare className="w-8 h-8 text-pink-500" />
+          <h1 className="crm-page-title">
+            <CheckSquare className="w-8 h-8" />
             Tasks
           </h1>
-          <p className="text-gray-500 mt-1">Organize and track your to-do items</p>
+          <p className="crm-page-subtitle">Organize and track your to-do items</p>
         </div>
         <Button 
           onClick={() => {
@@ -153,7 +153,7 @@ export default function Tasks() {
             resetForm();
             setShowDialog(true);
           }}
-          className="bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 shadow-lg"
+          className="crm-btn-primary"
         >
           <Plus className="w-4 h-4 mr-2" />
           Add Task
@@ -209,33 +209,31 @@ export default function Tasks() {
       </div>
 
       {/* Filters */}
-      <Card className="border-none shadow-lg">
-        <CardContent className="p-4">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <Input
-                placeholder="Search tasks..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-full md:w-48">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="Not Started">Not Started</SelectItem>
-                <SelectItem value="In Progress">In Progress</SelectItem>
-                <SelectItem value="Completed">Completed</SelectItem>
-                <SelectItem value="Deferred">Deferred</SelectItem>
-              </SelectContent>
-            </Select>
+      <div className="crm-toolbar">
+        <div className="crm-toolbar-left">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <Input
+              placeholder="Search tasks..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="crm-input pl-10"
+            />
           </div>
-        </CardContent>
-      </Card>
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger className="crm-select w-full md:w-48">
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="Not Started">Not Started</SelectItem>
+              <SelectItem value="In Progress">In Progress</SelectItem>
+              <SelectItem value="Completed">Completed</SelectItem>
+              <SelectItem value="Deferred">Deferred</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
       {/* Tasks List */}
       <div className="space-y-3">

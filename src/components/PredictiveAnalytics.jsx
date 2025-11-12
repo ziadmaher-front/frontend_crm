@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -41,6 +41,131 @@ import {
   Calendar,
   Filter
 } from 'lucide-react';
+
+// Memoized ModelCard component
+const ModelCard = memo(({ title, value, change, confidence, icon: Icon, trend }) => (
+  <Card>
+    <CardContent className="p-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-gray-600">{title}</p>
+          <p className="text-2xl font-bold">{value}</p>
+          <div className="flex items-center gap-2 mt-2">
+            {trend === 'up' ? (
+              <TrendingUp className="h-4 w-4 text-green-500" />
+            ) : (
+              <TrendingDown className="h-4 w-4 text-red-500" />
+            )}
+            <span className={`text-sm ${trend === 'up' ? 'text-green-600' : 'text-red-600'}`}>
+              {change}
+            </span>
+          </div>
+        </div>
+        <div className="text-right">
+          <Icon className="h-8 w-8 text-blue-500 mb-2" />
+          <div className="text-xs text-gray-500">
+            {confidence}% confidence
+          </div>
+          <Progress value={confidence} className="w-16 h-2" />
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+));
+
+// Memoized AnomalyAlert component
+const AnomalyAlert = memo(({ anomaly }) => (
+  <Card className={`border-l-4 ${
+    anomaly.severity === 'High' ? 'border-l-red-500' :
+    anomaly.severity === 'Medium' ? 'border-l-yellow-500' : 'border-l-blue-500'
+  }`}>
+    <CardContent className="p-4">
+      <div className="flex items-start justify-between">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className={`h-5 w-5 mt-0.5 ${
+            anomaly.severity === 'High' ? 'text-red-500' :
+            anomaly.severity === 'Medium' ? 'text-yellow-500' : 'text-blue-500'
+          }`} />
+          <div>
+            <h4 className="font-medium">{anomaly.type}</h4>
+            <p className="text-sm text-gray-600 mt-1">{anomaly.description}</p>
+            <p className="text-xs text-blue-600 mt-2">{anomaly.recommendation}</p>
+          </div>
+        </div>
+        <div className="text-right">
+          <Badge variant={
+            anomaly.severity === 'High' ? 'destructive' :
+            anomaly.severity === 'Medium' ? 'default' : 'secondary'
+          }>
+            {anomaly.severity}
+          </Badge>
+          <p className="text-xs text-gray-500 mt-1">{anomaly.detected}</p>
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+));
+
+// Memoized chart components
+const MemoizedRevenueForecastChart = memo(({ data }) => (
+  <ResponsiveContainer width="100%" height={400}>
+    <LineChart data={data}>
+      <CartesianGrid strokeDasharray="3 3" />
+      <XAxis dataKey="month" />
+      <YAxis />
+      <Tooltip />
+      <Legend />
+      <Line 
+        type="monotone" 
+        dataKey="actual" 
+        stroke="#3b82f6" 
+        strokeWidth={3}
+        name="Actual Revenue"
+      />
+      <Line 
+        type="monotone" 
+        dataKey="predicted" 
+        stroke="#ef4444" 
+        strokeDasharray="5 5"
+        strokeWidth={2}
+        name="Predicted Revenue"
+      />
+    </LineChart>
+  </ResponsiveContainer>
+));
+
+const MemoizedLeadScorePieChart = memo(({ data }) => (
+  <ResponsiveContainer width="100%" height={300}>
+    <PieChart>
+      <Pie
+        data={data}
+        cx="50%"
+        cy="50%"
+        outerRadius={80}
+        fill="#8884d8"
+        dataKey="count"
+        label={({ score, count }) => `${score}: ${count}`}
+      >
+        {data.map((entry, index) => (
+          <Cell key={`cell-${index}`} fill={entry.color} />
+        ))}
+      </Pie>
+      <Tooltip />
+    </PieChart>
+  </ResponsiveContainer>
+));
+
+const MemoizedConversionBarChart = memo(({ data }) => (
+  <ResponsiveContainer width="100%" height={300}>
+    <BarChart data={data}>
+      <CartesianGrid strokeDasharray="3 3" />
+      <XAxis dataKey="score" />
+      <YAxis />
+      <Tooltip />
+      <Bar dataKey="conversionRate" fill="#3b82f6" />
+    </BarChart>
+  </ResponsiveContainer>
+));
 
 const PredictiveAnalytics = () => {
   const [selectedTimeframe, setSelectedTimeframe] = useState('3months');
@@ -110,67 +235,7 @@ const PredictiveAnalytics = () => {
     }
   ];
 
-  const ModelCard = ({ title, value, change, confidence, icon: Icon, trend }) => (
-    <Card>
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-gray-600">{title}</p>
-            <p className="text-2xl font-bold">{value}</p>
-            <div className="flex items-center gap-2 mt-2">
-              {trend === 'up' ? (
-                <TrendingUp className="h-4 w-4 text-green-500" />
-              ) : (
-                <TrendingDown className="h-4 w-4 text-red-500" />
-              )}
-              <span className={`text-sm ${trend === 'up' ? 'text-green-600' : 'text-red-600'}`}>
-                {change}
-              </span>
-            </div>
-          </div>
-          <div className="text-right">
-            <Icon className="h-8 w-8 text-blue-500 mb-2" />
-            <div className="text-xs text-gray-500">
-              {confidence}% confidence
-            </div>
-            <Progress value={confidence} className="w-16 h-2" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
 
-  const AnomalyAlert = ({ anomaly }) => (
-    <Card className={`border-l-4 ${
-      anomaly.severity === 'High' ? 'border-l-red-500' :
-      anomaly.severity === 'Medium' ? 'border-l-yellow-500' : 'border-l-blue-500'
-    }`}>
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className={`h-5 w-5 mt-0.5 ${
-              anomaly.severity === 'High' ? 'text-red-500' :
-              anomaly.severity === 'Medium' ? 'text-yellow-500' : 'text-blue-500'
-            }`} />
-            <div>
-              <h4 className="font-medium">{anomaly.type}</h4>
-              <p className="text-sm text-gray-600 mt-1">{anomaly.description}</p>
-              <p className="text-xs text-blue-600 mt-2">{anomaly.recommendation}</p>
-            </div>
-          </div>
-          <div className="text-right">
-            <Badge variant={
-              anomaly.severity === 'High' ? 'destructive' :
-              anomaly.severity === 'Medium' ? 'default' : 'secondary'
-            }>
-              {anomaly.severity}
-            </Badge>
-            <p className="text-xs text-gray-500 mt-1">{anomaly.detected}</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
 
   return (
     <div className="space-y-6">
@@ -264,31 +329,8 @@ const PredictiveAnalytics = () => {
               <CardTitle>Revenue Forecast Model</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={400}>
-                <LineChart data={revenueForecast}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line 
-                    type="monotone" 
-                    dataKey="actual" 
-                    stroke="#3b82f6" 
-                    strokeWidth={3}
-                    name="Actual Revenue"
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="predicted" 
-                    stroke="#ef4444" 
-                    strokeDasharray="5 5"
-                    strokeWidth={2}
-                    name="Predicted Revenue"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
+               <MemoizedRevenueForecastChart data={revenueForecast} />
+             </CardContent>
           </Card>
         </TabsContent>
 
@@ -299,25 +341,8 @@ const PredictiveAnalytics = () => {
                 <CardTitle>Lead Score Distribution</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={leadScoringData}
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="count"
-                      label={({ score, count }) => `${score}: ${count}`}
-                    >
-                      {leadScoringData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </CardContent>
+                 <MemoizedLeadScorePieChart data={leadScoringData} />
+               </CardContent>
             </Card>
 
             <Card>
@@ -325,16 +350,8 @@ const PredictiveAnalytics = () => {
                 <CardTitle>Conversion Rates by Score</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={leadScoringData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="score" />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="conversionRate" fill="#3b82f6" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
+                 <MemoizedConversionBarChart data={leadScoringData} />
+               </CardContent>
             </Card>
           </div>
         </TabsContent>

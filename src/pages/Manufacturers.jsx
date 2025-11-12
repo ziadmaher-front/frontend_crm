@@ -13,17 +13,13 @@ import {
   Edit,
   Mail,
   Phone,
-  Globe,
   MapPin,
   Star,
   Briefcase,
-  Truck,
-  DollarSign,
   Users,
   X,
   Eye,
   ShoppingCart,
-  FileText,
   UserPlus
 } from "lucide-react";
 import {
@@ -457,7 +453,7 @@ export default function Manufacturers() {
         records={filteredManufacturers}
         onRefresh={() => queryClient.invalidateQueries({ queryKey: ['manufacturers'] })}
       >
-        {({ selectedRecords, isSelected, handleSelectRecord }) => (
+        {({ isSelected }) => (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredManufacturers.map((manufacturer) => {
               const contacts = getManufacturerContacts(manufacturer.id);

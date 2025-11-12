@@ -1,12 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { AccessibleButton } from '@/components/AccessibilityEnhancements';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { 
-  MessageCircle, 
   Mic, 
   MicOff, 
   Send, 
@@ -18,14 +18,13 @@ import {
   Calendar,
   Phone,
   Mail,
-  FileText,
   BarChart3,
   Lightbulb,
   X,
   Minimize2,
   Maximize2
 } from 'lucide-react';
-import { base44Client } from '@/api/base44Client';
+import { base44 } from '@/api/base44Client';
 
 const AIAssistant = ({ isOpen, onToggle }) => {
   const [messages, setMessages] = useState([
@@ -243,22 +242,24 @@ const AIAssistant = ({ isOpen, onToggle }) => {
               </Badge>
             </div>
             <div className="flex items-center gap-1">
-              <Button
+              <AccessibleButton
                 variant="ghost"
                 size="sm"
                 onClick={() => setIsMinimized(!isMinimized)}
                 className="text-white hover:bg-white/20 h-8 w-8 p-0"
+                ariaLabel={isMinimized ? "Maximize AI Assistant" : "Minimize AI Assistant"}
               >
                 {isMinimized ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
-              </Button>
-              <Button
+              </AccessibleButton>
+              <AccessibleButton
                 variant="ghost"
                 size="sm"
                 onClick={onToggle}
                 className="text-white hover:bg-white/20 h-8 w-8 p-0"
+                ariaLabel="Close AI Assistant"
               >
                 <X className="h-4 w-4" />
-              </Button>
+              </AccessibleButton>
             </div>
           </div>
         </CardHeader>
@@ -353,17 +354,23 @@ const AIAssistant = ({ isOpen, onToggle }) => {
                   placeholder="Ask me anything about your CRM data..."
                   className="flex-1"
                 />
-                <Button
+                <AccessibleButton
                   variant="outline"
                   size="sm"
                   onClick={handleVoiceInput}
                   className={`px-3 ${isListening ? 'bg-red-100 text-red-600' : ''}`}
+                  ariaLabel={isListening ? "Stop voice input" : "Start voice input"}
                 >
                   {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                </Button>
-                <Button onClick={handleSendMessage} size="sm" className="px-3">
+                </AccessibleButton>
+                <AccessibleButton 
+                  onClick={handleSendMessage} 
+                  size="sm" 
+                  className="px-3"
+                  ariaLabel="Send message"
+                >
                   <Send className="h-4 w-4" />
-                </Button>
+                </AccessibleButton>
               </div>
             </div>
           </CardContent>

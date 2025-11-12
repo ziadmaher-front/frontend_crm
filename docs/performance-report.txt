@@ -1,0 +1,32 @@
+Performance Test Report
+
+Scope:
+- Dashboard load and render timings (instrumented via performanceMonitor marks)
+- API data loading timing on Dashboard (isLoading transitions)
+- Production build artifact sizes (bundle analyzer configured via rollup-plugin-visualizer)
+
+Key Findings (current run):
+- Production build completed successfully with no runtime errors in preview.
+- Largest chunks:
+  - dashboard chunk: ~3.07 MB (gzip ~970 KB)
+  - chart-vendor (recharts): ~479 KB (gzip ~120 KB)
+  - EnhancedAIDashboard: ~228 KB (gzip ~71 KB)
+  - react-vendor: ~140 KB (gzip ~45 KB)
+  - ui-vendor: ~128 KB (gzip ~42 KB)
+- Manual 'analytics' chunk was removed to fix a production runtime error (Cannot access 'v' before initialization). After removal, preview runs cleanly.
+
+Instrumentation Added:
+- Dashboard mount timing: mark('dashboard-mount') and measure after first paint.
+- Dashboard data loading timing: mark('dashboard-data-loading') on loading start; measure when loading completes.
+
+How to View Metrics:
+- Use PerformanceMonitor UI at route /PerformanceMonitor for an overview of simulated metrics.
+- In code, import performanceMonitor from '@/utils/performanceMonitor' and call performanceMonitor.generateReport() or exportMetrics() where needed.
+- Bundle analyzer report is generated at dist/stats.html after build. Open the production preview and navigate to /stats.html.
+
+Next Optimization Opportunities:
+- Split Dashboard into more lazy-loaded sections to reduce the main chunk size.
+- Consider moving heavy charts behind Suspense with lazy imports.
+- Review recharts usage; defer loading of non-critical charts.
+- Evaluate cache lifetimes in react-query to reduce redundant fetches.
+

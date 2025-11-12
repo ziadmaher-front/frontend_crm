@@ -22,38 +22,51 @@ import {
   Settings,
   BarChart3,
   Package,
-  Command
+  Command,
+  Clock
 } from "lucide-react";
 import { createPageUrl } from "@/utils";
+import { useAppState, useAppDispatch, actions, selectors } from "@/contexts/AppContext.jsx";
+import { Activity as ActivityIcon } from "lucide-react";
 
 const QUICK_ACTIONS = [
-  { id: 'new-lead', label: 'Create New Lead', icon: Sparkles, action: 'create', entity: 'Lead', category: 'Create' },
-  { id: 'new-contact', label: 'Create New Contact', icon: Users, action: 'create', entity: 'Contact', category: 'Create' },
-  { id: 'new-account', label: 'Create New Account', icon: Building2, action: 'create', entity: 'Account', category: 'Create' },
-  { id: 'new-deal', label: 'Create New Deal', icon: TrendingUp, action: 'create', entity: 'Deal', category: 'Create' },
-  { id: 'new-task', label: 'Create New Task', icon: CheckSquare, action: 'create', entity: 'Task', category: 'Create' },
-  { id: 'new-quote', label: 'Create New Quote', icon: FileText, action: 'create', entity: 'Quote', category: 'Create' },
-  { id: 'send-email', label: 'Send Email', icon: Mail, action: 'email', category: 'Actions' },
-  { id: 'schedule-meeting', label: 'Schedule Meeting', icon: Calendar, action: 'meeting', category: 'Actions' },
-  { id: 'make-call', label: 'Make Call', icon: Phone, action: 'call', category: 'Actions' },
+  { id: 'new-lead', label: 'Create New Lead', icon: Sparkles, action: 'create', entity: 'Lead', category: 'Create', shortcut: 'Ctrl+Shift+L' },
+  { id: 'new-contact', label: 'Create New Contact', icon: Users, action: 'create', entity: 'Contact', category: 'Create', shortcut: 'Ctrl+Shift+C' },
+  { id: 'new-account', label: 'Create New Account', icon: Building2, action: 'create', entity: 'Account', category: 'Create', shortcut: 'Ctrl+Shift+A' },
+  { id: 'new-deal', label: 'Create New Deal', icon: TrendingUp, action: 'create', entity: 'Deal', category: 'Create', shortcut: 'Ctrl+Shift+D' },
+  { id: 'new-task', label: 'Create New Task', icon: CheckSquare, action: 'create', entity: 'Task', category: 'Create', shortcut: 'Ctrl+Shift+T' },
+  { id: 'new-quote', label: 'Create New Quote', icon: FileText, action: 'create', entity: 'Quote', category: 'Create', shortcut: 'Ctrl+Shift+Q' },
+  { id: 'send-email', label: 'Compose Email', icon: Mail, action: 'email', category: 'Actions', shortcut: 'Ctrl+E' },
+  { id: 'schedule-meeting', label: 'Schedule Meeting', icon: Calendar, action: 'meeting', category: 'Actions', shortcut: 'Ctrl+M' },
+  { id: 'make-call', label: 'Log Call', icon: Phone, action: 'call', category: 'Actions', shortcut: 'Ctrl+P' },
+  { id: 'follow-up', label: 'Run Follow-up Macro', icon: Clock, action: 'followup', category: 'Actions', shortcut: 'Ctrl+F' },
+  { id: 'bulk-operations', label: 'Bulk Operations', icon: Package, action: 'bulk', category: 'Actions', shortcut: 'Ctrl+B', requires: ['bulk:execute'] },
+  { id: 'export-data', label: 'Export Data', icon: FileText, action: 'export', category: 'Actions', shortcut: 'Ctrl+Shift+E', requires: ['data:export'] },
+  { id: 'import-data', label: 'Import Data', icon: FileText, action: 'import', category: 'Actions', shortcut: 'Ctrl+Shift+I', requires: ['data:import'] },
+  { id: 'toggle-theme', label: 'Toggle Theme', icon: Settings, action: 'toggle-theme', category: 'Actions', shortcut: 'Ctrl+T' },
+  { id: 'open-integration-health', label: 'Open Integration Health', icon: ActivityIcon, action: 'open-integration-health', category: 'Actions' },
 ];
 
 const NAVIGATION = [
-  { id: 'nav-dashboard', label: 'Dashboard', icon: BarChart3, page: 'Dashboard', category: 'Navigate' },
-  { id: 'nav-leads', label: 'Leads', icon: Sparkles, page: 'Leads', category: 'Navigate' },
-  { id: 'nav-contacts', label: 'Contacts', icon: Users, page: 'Contacts', category: 'Navigate' },
-  { id: 'nav-accounts', label: 'Accounts', icon: Building2, page: 'Accounts', category: 'Navigate' },
-  { id: 'nav-deals', label: 'Deals', icon: TrendingUp, page: 'Deals', category: 'Navigate' },
-  { id: 'nav-tasks', label: 'Tasks', icon: CheckSquare, page: 'Tasks', category: 'Navigate' },
-  { id: 'nav-products', label: 'Products', icon: Package, page: 'Products', category: 'Navigate' },
-  { id: 'nav-quotes', label: 'Quotes', icon: FileText, page: 'Quotes', category: 'Navigate' },
-  { id: 'nav-reports', label: 'Reports', icon: BarChart3, page: 'Reports', category: 'Navigate' },
-  { id: 'nav-settings', label: 'Settings', icon: Settings, page: 'Settings', category: 'Navigate' },
+  { id: 'nav-dashboard', label: 'Dashboard', icon: BarChart3, page: 'Dashboard', category: 'Navigate', shortcut: 'Ctrl+1' },
+  { id: 'nav-leads', label: 'Leads', icon: Sparkles, page: 'Leads', category: 'Navigate', shortcut: 'Ctrl+2' },
+  { id: 'nav-contacts', label: 'Contacts', icon: Users, page: 'Contacts', category: 'Navigate', shortcut: 'Ctrl+3' },
+  { id: 'nav-accounts', label: 'Accounts', icon: Building2, page: 'Accounts', category: 'Navigate', shortcut: 'Ctrl+4' },
+  { id: 'nav-deals', label: 'Deals', icon: TrendingUp, page: 'Deals', category: 'Navigate', shortcut: 'Ctrl+5' },
+  { id: 'nav-tasks', label: 'Tasks', icon: CheckSquare, page: 'Tasks', category: 'Navigate', shortcut: 'Ctrl+6' },
+  { id: 'nav-products', label: 'Products', icon: Package, page: 'Products', category: 'Navigate', shortcut: 'Ctrl+7' },
+  { id: 'nav-quotes', label: 'Quotes', icon: FileText, page: 'Quotes', category: 'Navigate', shortcut: 'Ctrl+8' },
+  { id: 'nav-reports', label: 'Reports', icon: BarChart3, page: 'Reports', category: 'Navigate', shortcut: 'Ctrl+9' },
+  { id: 'nav-settings', label: 'Settings', icon: Settings, page: 'Settings', category: 'Navigate', shortcut: 'Ctrl+0' },
+  { id: 'nav-integrations', label: 'Integrations', icon: ActivityIcon, page: 'Integrations', category: 'Navigate' },
 ];
 
 export default function CommandPalette({ open, onOpenChange }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const state = useAppState();
+  const dispatch = useAppDispatch();
+  const userPermissions = selectors.getUserPermissions(state);
 
   const { data: leads = [] } = useQuery({
     queryKey: ['leads'],
@@ -82,10 +95,18 @@ export default function CommandPalette({ open, onOpenChange }) {
   // Build search results
   const searchResults = [];
 
-  // Add quick actions
+  // Permission filter helper
+  const allowByPermissions = (item) => {
+    if (!item.requires || item.requires.length === 0) return true;
+    return item.requires.every(p => userPermissions.includes(p));
+  };
+
+  // Add quick actions (permission-aware)
   QUICK_ACTIONS.forEach(action => {
     if (action.label.toLowerCase().includes(searchQuery.toLowerCase()) || !searchQuery) {
-      searchResults.push({ ...action, type: 'action' });
+      if (allowByPermissions(action)) {
+        searchResults.push({ ...action, type: 'action' });
+      }
     }
   });
 
@@ -170,6 +191,22 @@ export default function CommandPalette({ open, onOpenChange }) {
   }, {});
 
   // Flatten for keyboard navigation
+  // Context-aware extras: show latest lead when no query
+  if (!searchQuery && leads.length > 0) {
+    const latestLead = leads[0];
+    const name = `${latestLead.first_name} ${latestLead.last_name}`;
+    searchResults.unshift({
+      id: `lead-latest-${latestLead.id}`,
+      label: `Open Latest Lead: ${name}`,
+      sublabel: latestLead.email,
+      icon: Sparkles,
+      type: 'record',
+      entity: 'Lead',
+      recordId: latestLead.id,
+      category: 'Leads'
+    });
+  }
+
   const flatResults = searchResults.slice(0, 10);
 
   useEffect(() => {
@@ -209,6 +246,19 @@ export default function CommandPalette({ open, onOpenChange }) {
     } else if (item.type === 'action') {
       if (item.action === 'create') {
         window.location.href = createPageUrl(item.entity + 's');
+      } else if (item.action === 'followup') {
+        window.dispatchEvent(new CustomEvent('crm:run-followup'));
+      } else if (item.action === 'email') {
+        window.dispatchEvent(new CustomEvent('crm:open-quick-actions-email'));
+      } else if (item.action === 'meeting') {
+        window.dispatchEvent(new CustomEvent('crm:open-quick-actions-meeting'));
+      } else if (item.action === 'call') {
+        window.dispatchEvent(new CustomEvent('crm:open-quick-actions-call'));
+      } else if (item.action === 'open-integration-health') {
+        window.location.href = createPageUrl('Integrations');
+      } else if (item.action === 'toggle-theme') {
+        const currentTheme = selectors.getCurrentTheme(state);
+        dispatch(actions.setTheme(currentTheme === 'light' ? 'dark' : 'light'));
       }
     }
     onOpenChange(false);
@@ -276,11 +326,18 @@ export default function CommandPalette({ open, onOpenChange }) {
                             <p className="text-xs text-gray-500 truncate">{item.sublabel}</p>
                           )}
                         </div>
-                        {item.type === 'action' && (
-                          <Badge variant="outline" className="text-xs">
-                            {item.action}
-                          </Badge>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {item.shortcut && (
+                            <kbd className="hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-70">
+                              {item.shortcut}
+                            </kbd>
+                          )}
+                          {item.type === 'action' && (
+                            <Badge variant="outline" className="text-xs">
+                              {item.action}
+                            </Badge>
+                          )}
+                        </div>
                       </button>
                     );
                   })}

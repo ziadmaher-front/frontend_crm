@@ -109,7 +109,255 @@ button:focus-visible {
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* CRM Design System Variables */
+    --crm-gray-50: 249 250 251;
+    --crm-gray-100: 243 244 246;
+    --crm-gray-200: 229 231 235;
+    --crm-gray-300: 209 213 219;
+    --crm-gray-400: 156 163 175;
+    --crm-gray-500: 107 114 128;
+    --crm-gray-600: 75 85 99;
+    --crm-gray-700: 55 65 81;
+    --crm-gray-800: 31 41 55;
+    --crm-gray-900: 17 24 39;
+
+    /* Status Colors */
+    --crm-success: 34 197 94;
+    --crm-warning: 251 191 36;
+    --crm-error: 239 68 68;
+    --crm-info: 59 130 246;
+
+    /* Entity Colors */
+    --crm-accounts: 16 185 129;
+    --crm-contacts: 147 51 234;
+    --crm-leads: 59 130 246;
+    --crm-deals: 34 197 94;
+    --crm-tasks: 251 191 36;
+
+    /* Typography */
+    --crm-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --crm-font-size-xs: 0.75rem;
+    --crm-font-size-sm: 0.875rem;
+    --crm-font-size-base: 1rem;
+    --crm-font-size-lg: 1.125rem;
+    --crm-font-size-xl: 1.25rem;
+    --crm-font-size-2xl: 1.5rem;
+    --crm-font-size-3xl: 1.875rem;
+
+    /* Spacing */
+    --crm-spacing-xs: 0.25rem;
+    --crm-spacing-sm: 0.5rem;
+    --crm-spacing-md: 1rem;
+    --crm-spacing-lg: 1.5rem;
+    --crm-spacing-xl: 2rem;
+    --crm-spacing-2xl: 3rem;
+
+    /* Border Radius */
+    --crm-radius-sm: 0.25rem;
+    --crm-radius-md: 0.375rem;
+    --crm-radius-lg: 0.5rem;
+    --crm-radius-xl: 0.75rem;
+
+    /* Shadows */
+    --crm-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --crm-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --crm-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   }
+
+/* Enhanced UI Improvements */
+.dialog-content-enhanced {
+  background: hsl(var(--background)) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 2px solid hsl(var(--border) / 0.2);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px hsl(var(--border) / 0.1);
+}
+
+.card-enhanced {
+  background: hsl(var(--card)) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 2px solid hsl(var(--border) / 0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-enhanced:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* Improved overlay backgrounds */
+.overlay-enhanced {
+  background: rgba(0, 0, 0, 0.6) !important;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* Better button hover effects */
+.button-enhanced {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.button-enhanced:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Smooth animations */
+@keyframes slideInFromBottom {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slideInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes bounce {
+  0%, 20%, 53%, 80%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  40%, 43% {
+    transform: translate3d(0, -8px, 0);
+  }
+  70% {
+    transform: translate3d(0, -4px, 0);
+  }
+  90% {
+    transform: translate3d(0, -2px, 0);
+  }
+}
+
+.animate-slide-in {
+  animation: slideInFromBottom 0.3s ease-out;
+}
+
+.animate-fade-in-scale {
+  animation: fadeInScale 0.2s ease-out;
+}
+
+.animate-slide-in-right {
+  animation: slideInFromRight 0.3s ease-out;
+}
+
+.animate-slide-in-left {
+  animation: slideInFromLeft 0.3s ease-out;
+}
+
+.animate-pulse-custom {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-bounce-custom {
+  animation: bounce 1s infinite;
+}
+
+/* Enhanced focus states */
+.focus-enhanced:focus {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring));
+}
+
+/* Improved scrollbar styling */
+.scrollbar-enhanced::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scrollbar-enhanced::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+  border-radius: 4px;
+}
+
+.scrollbar-enhanced::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.scrollbar-enhanced::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Loading states */
+.loading-shimmer {
+  background: linear-gradient(90deg, 
+    hsl(var(--muted)) 0%, 
+    hsl(var(--muted-foreground) / 0.1) 50%, 
+    hsl(var(--muted)) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Interactive elements */
+.interactive-element {
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.interactive-element:hover {
+  transform: scale(1.02);
+}
+
+.interactive-element:active {
+  transform: scale(0.98);
+}
+
   .dark {
     --background: 0 0% 3.9%;
     --foreground: 0 0% 98%;
@@ -143,6 +391,69 @@ button:focus-visible {
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* Enhanced CRM Dark Mode Variables */
+    --crm-gray-50: 0 0% 15%;
+    --crm-gray-100: 0 0% 18%;
+    --crm-gray-200: 0 0% 22%;
+    --crm-gray-300: 0 0% 28%;
+    --crm-gray-400: 0 0% 35%;
+    --crm-gray-500: 0 0% 45%;
+    --crm-gray-600: 0 0% 55%;
+    --crm-gray-700: 0 0% 65%;
+    --crm-gray-800: 0 0% 75%;
+    --crm-gray-900: 0 0% 85%;
+
+    /* Enhanced Status Colors for dark mode */
+    --crm-success: 142 76% 36%;
+    --crm-success-light: 142 76% 46%;
+    --crm-warning: 38 92% 50%;
+    --crm-warning-light: 38 92% 60%;
+    --crm-error: 0 84% 60%;
+    --crm-error-light: 0 84% 70%;
+    --crm-info: 199 89% 48%;
+    --crm-info-light: 199 89% 58%;
+
+    /* Enhanced Entity Colors for dark mode */
+    --crm-lead: 262 83% 58%;
+    --crm-lead-light: 262 83% 68%;
+    --crm-contact: 217 91% 60%;
+    --crm-contact-light: 217 91% 70%;
+    --crm-deal: 142 71% 45%;
+    --crm-deal-light: 142 71% 55%;
+    --crm-task: 25 95% 53%;
+    --crm-task-light: 25 95% 63%;
+
+    /* Better shadows for dark mode */
+    --crm-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+    --crm-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+    --crm-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+    --crm-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Dark mode specific enhancements */
+  .dark .dialog-content-enhanced {
+    background: hsl(var(--background)) !important;
+    border: 2px solid hsl(var(--border) / 0.3);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px hsl(var(--border) / 0.2);
+  }
+
+  .dark .card-enhanced {
+    background: hsl(var(--card)) !important;
+    border: 2px solid hsl(var(--border) / 0.2);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  }
+
+  .dark .card-enhanced:hover {
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+  }
+
+  .dark .button-enhanced:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  .dark .overlay-enhanced {
+    background: rgba(0, 0, 0, 0.8) !important;
   }
 }
 
@@ -154,5 +465,176 @@ button:focus-visible {
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--crm-font-family);
+  }
+}
+
+/* CRM Component Styles */
+@layer components {
+  /* Professional Table Styling */
+  .crm-table {
+    @apply w-full border-collapse;
+  }
+  
+  .crm-table-header {
+    @apply bg-gray-50 border-b border-gray-200;
+  }
+  
+  .crm-table-header th {
+    @apply px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider;
+  }
+  
+  .crm-table-body {
+    @apply divide-y divide-gray-200 bg-white;
+  }
+  
+  .crm-table-row {
+    @apply hover:bg-gray-50 transition-colors cursor-pointer;
+  }
+  
+  .crm-table-row.selected {
+    @apply bg-blue-50 border-blue-200;
+  }
+  
+  .crm-table-cell {
+    @apply px-6 py-4 whitespace-nowrap text-sm text-gray-900;
+  }
+
+  /* Status Badges */
+  .crm-badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border;
+  }
+  
+  .crm-badge-success {
+    @apply bg-green-100 text-green-700 border-green-200;
+  }
+  
+  .crm-badge-warning {
+    @apply bg-yellow-100 text-yellow-700 border-yellow-200;
+  }
+  
+  .crm-badge-error {
+    @apply bg-red-100 text-red-700 border-red-200;
+  }
+  
+  .crm-badge-info {
+    @apply bg-blue-100 text-blue-700 border-blue-200;
+  }
+
+  /* Entity Type Badges */
+  .crm-badge-customer {
+    @apply bg-emerald-100 text-emerald-700 border-emerald-200;
+  }
+  
+  .crm-badge-prospect {
+    @apply bg-blue-100 text-blue-700 border-blue-200;
+  }
+  
+  .crm-badge-partner {
+    @apply bg-purple-100 text-purple-700 border-purple-200;
+  }
+  
+  .crm-badge-competitor {
+    @apply bg-gray-100 text-gray-700 border-gray-200;
+  }
+
+  /* Page Headers */
+  .crm-page-header {
+    @apply flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6;
+  }
+  
+  .crm-page-title {
+    @apply text-3xl font-bold text-gray-900 flex items-center gap-2;
+  }
+  
+  .crm-page-subtitle {
+    @apply text-gray-600 mt-1;
+  }
+
+  /* Toolbar Styling */
+  .crm-toolbar {
+    @apply flex flex-wrap items-center gap-3 p-4 bg-white border-b border-gray-200;
+  }
+  
+  .crm-toolbar-left {
+    @apply flex items-center gap-3 flex-1;
+  }
+  
+  .crm-toolbar-right {
+    @apply flex items-center gap-2;
+  }
+
+  /* Filter Sidebar */
+  .crm-filter-sidebar {
+    @apply w-64 bg-gray-50 border-r border-gray-200 p-4 space-y-4;
+  }
+  
+  .crm-filter-group {
+    @apply space-y-2;
+  }
+  
+  .crm-filter-label {
+    @apply text-sm font-medium text-gray-700;
+  }
+
+  /* Cards */
+  .crm-card {
+    @apply bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow;
+  }
+  
+  .crm-card-header {
+    @apply p-4 border-b border-gray-200;
+  }
+  
+  .crm-card-content {
+    @apply p-4;
+  }
+
+  /* Buttons */
+  .crm-btn-primary {
+    @apply bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition-colors;
+  }
+  
+  .crm-btn-secondary {
+    @apply bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium px-4 py-2 rounded-lg transition-colors;
+  }
+  
+  .crm-btn-success {
+    @apply bg-green-600 hover:bg-green-700 text-white font-medium px-4 py-2 rounded-lg transition-colors;
+  }
+
+  /* Form Elements */
+  .crm-input {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors;
+  }
+  
+  .crm-select {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white;
+  }
+
+  /* Avatar */
+  .crm-avatar {
+    @apply w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold;
+  }
+  
+  .crm-avatar-sm {
+    @apply w-6 h-6 text-xs;
+  }
+  
+  .crm-avatar-lg {
+    @apply w-12 h-12 text-base;
+  }
+
+  /* Pagination */
+  .crm-pagination {
+    @apply flex items-center justify-between px-4 py-3 bg-white border-t border-gray-200;
+  }
+  
+  .crm-pagination-info {
+    @apply text-sm text-gray-700;
+  }
+  
+  .crm-pagination-controls {
+    @apply flex items-center gap-2;
   }
 }

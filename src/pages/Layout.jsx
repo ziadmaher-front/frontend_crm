@@ -21,7 +21,19 @@ import {
   User as UserIcon,
   BarChart3,
   Search as SearchIcon,
-  Command
+  Command,
+  Bot,
+  Shield,
+  Eye,
+  Brain,
+  DollarSign,
+  MessageSquare,
+  UserX,
+  Zap,
+  BarChart,
+  Smartphone,
+  Lock,
+  Target
 } from "lucide-react";
 import {
   Sidebar,
@@ -37,6 +49,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { NotificationCenter } from "@/components/ui/EnhancedNotifications";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,11 +59,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
+import { MobileBottomNavigation, MobileHeader } from "@/components/MobileNavigation";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { SkipToContent, FocusTrap, useKeyboardNavigation } from "@/components/AccessibilityEnhancements";
 import GlobalSearch from "@/components/GlobalSearch";
 import NotificationsCenter from "@/components/NotificationsCenter";
 import CommandPalette from "@/components/CommandPalette";
+import AIAssistant from "@/components/AIAssistant";
 
 const navigationItems = [
   {
@@ -123,6 +141,285 @@ const navigationItems = [
     url: createPageUrl("Tasks"),
     icon: CheckSquare,
   },
+  {
+    title: "Security",
+    url: createPageUrl("Security"),
+    icon: Shield,
+  },
+  {
+    title: "User Experience",
+    url: createPageUrl("UserExperience"),
+    icon: Eye,
+  },
+];
+
+const aiNavigationItems = [
+  {
+    title: "AI Dashboard",
+    url: createPageUrl("AIDashboard"),
+    icon: Brain,
+  },
+  {
+    title: "Business Intelligence",
+    url: createPageUrl("BusinessIntelligenceDashboard"),
+    icon: BarChart3,
+  },
+  {
+    title: "Intelligent Dashboard",
+    url: createPageUrl("IntelligentDashboard"),
+    icon: LayoutDashboard,
+  },
+  {
+    title: "Advanced AI Engine",
+    url: createPageUrl("AdvancedAIEngine"),
+    icon: Brain,
+  },
+  {
+    title: "Smart Mobile Experience",
+    url: createPageUrl("SmartMobileExperience"),
+    icon: Smartphone,
+  },
+  {
+    title: "Integration Marketplace",
+    url: createPageUrl("IntegrationMarketplace"),
+    icon: Zap,
+  },
+  {
+    title: "Revenue Optimization",
+    url: createPageUrl("RevenueOptimization"),
+    icon: DollarSign,
+  },
+  {
+    title: "Sentiment Analysis",
+    url: createPageUrl("SentimentAnalysis"),
+    icon: Brain,
+  },
+  {
+    title: "Dynamic Pricing",
+    url: createPageUrl("DynamicPricing"),
+    icon: DollarSign,
+  },
+  {
+    title: "AI Chatbot",
+    url: createPageUrl("AIChatbot"),
+    icon: MessageSquare,
+  },
+  {
+    title: "Churn Analysis",
+    url: createPageUrl("PredictiveChurnAnalysis"),
+    icon: UserX,
+  },
+  {
+    title: "Integration Hub",
+    url: createPageUrl("SmartIntegrationMarketplace"),
+    icon: Zap,
+  },
+  {
+    title: "Workflow Automation",
+    url: createPageUrl("AdvancedWorkflowAutomation"),
+    icon: Bot,
+  },
+  {
+    title: "Smart Reports",
+    url: createPageUrl("SmartReportingEngine"),
+    icon: BarChart,
+  },
+  {
+    title: "Mobile Experience",
+    url: createPageUrl("MobileExperience"),
+    icon: Smartphone,
+  },
+  {
+    title: "Advanced Analytics",
+    url: createPageUrl("AdvancedDataVisualization"),
+    icon: BarChart3,
+  },
+  {
+    title: "Customer Journey",
+    url: createPageUrl("CustomerJourney"),
+    icon: Users,
+  },
+  {
+    title: "Sales Coaching",
+    url: createPageUrl("SalesCoaching"),
+    icon: Users,
+  },
+  {
+      title: "Lead Qualification",
+      url: "/LeadQualification",
+      icon: Target,
+    },
+];
+
+// Advanced CRM Features Navigation
+const advancedCrmItems = [
+  {
+    title: "AI Lead Qualification",
+    url: createPageUrl("AILeadQualification"),
+    icon: Brain,
+  },
+  {
+    title: "Deal Insights",
+    url: createPageUrl("IntelligentDealInsights"),
+    icon: TrendingUp,
+  },
+  {
+    title: "AI Assistant",
+    url: createPageUrl("ConversationalAI"),
+    icon: MessageSquare,
+  },
+  {
+    title: "Real-Time BI",
+    url: createPageUrl("RealTimeBI"),
+    icon: BarChart3,
+  },
+  {
+    title: "Workflow Builder",
+    url: createPageUrl("WorkflowAutomation"),
+    icon: Bot,
+  },
+  {
+    title: "Mobile Features",
+    url: createPageUrl("AdvancedMobile"),
+    icon: Smartphone,
+  },
+  {
+    title: "Advanced Forecasting",
+    url: createPageUrl("AdvancedForecasting"),
+    icon: BarChart,
+  },
+  {
+    title: "Social Media",
+    url: createPageUrl("SocialMediaIntegration"),
+    icon: Megaphone,
+  },
+  {
+    title: "Email Marketing",
+    url: createPageUrl("AdvancedEmailMarketing"),
+    icon: FileText,
+  },
+  {
+    title: "Communication Hub",
+    url: createPageUrl("UnifiedCommunicationHub"),
+    icon: Users,
+  },
+];
+
+// Security & Admin Navigation
+const securityAdminItems = [
+  {
+    title: "Security Center",
+    url: createPageUrl("SecurityCenter"),
+    icon: Shield,
+  },
+  {
+    title: "Security Dashboard",
+    url: createPageUrl("SecurityDashboard"),
+    icon: Shield,
+  },
+  {
+    title: "Audit Logger",
+    url: createPageUrl("AuditLogger"),
+    icon: FileText,
+  },
+  {
+    title: "GDPR Tools",
+    url: createPageUrl("GDPRTools"),
+    icon: Shield,
+  },
+  {
+    title: "Field Encryption",
+    url: createPageUrl("FieldEncryption"),
+    icon: Shield,
+  },
+  {
+    title: "SSO Integration",
+    url: createPageUrl("SSOIntegration"),
+    icon: Users,
+  },
+  {
+    title: "Advanced MFA",
+    url: createPageUrl("AdvancedMFA"),
+    icon: Shield,
+  },
+  {
+    title: "Incident Response",
+    url: createPageUrl("SecurityIncidentResponse"),
+    icon: Activity,
+  },
+  {
+    title: "Vulnerability Management",
+    url: createPageUrl("VulnerabilityManagement"),
+    icon: Eye,
+  },
+  {
+    title: "Data Loss Prevention",
+    url: createPageUrl("DataLossPrevention"),
+    icon: Lock,
+  },
+];
+
+// Development & Testing Navigation
+const devTestingItems = [
+  {
+    title: "Test Runner",
+    url: createPageUrl("TestRunner"),
+    icon: CheckSquare,
+  },
+  {
+    title: "Integration Tests",
+    url: createPageUrl("IntegrationTests"),
+    icon: Zap,
+  },
+  {
+    title: "System Tester",
+    url: createPageUrl("SystemTester"),
+    icon: Settings,
+  },
+  {
+    title: "Performance Monitor",
+    url: createPageUrl("PerformanceMonitor"),
+    icon: Activity,
+  },
+  {
+    title: "Production Readiness",
+    url: createPageUrl("ProductionReadiness"),
+    icon: CheckSquare,
+  },
+];
+
+// Tools & Utilities Navigation
+const toolsUtilitiesItems = [
+  {
+    title: "Accessibility Tools",
+    url: createPageUrl("AccessibilityTools"),
+    icon: Eye,
+  },
+  {
+    title: "PWA Manager",
+    url: createPageUrl("PWAManager"),
+    icon: Smartphone,
+  },
+  {
+    title: "Webhook Manager",
+    url: createPageUrl("WebhookManager"),
+    icon: Zap,
+  },
+  {
+    title: "Realtime Sync",
+    url: createPageUrl("RealtimeSync"),
+    icon: Activity,
+  },
+  {
+    title: "User Guide",
+    url: createPageUrl("UserGuide"),
+    icon: FileText,
+  },
+  {
+    title: "System Documentation",
+    url: createPageUrl("SystemDocumentation"),
+    icon: FileText,
+  },
 ];
 
 const PAGE_TITLES = {
@@ -140,10 +437,59 @@ const PAGE_TITLES = {
   "Campaigns": "Campaigns",
   "Activities": "Activities",
   "Tasks": "Tasks",
+  "Security": "Security Center",
+  "UserExperience": "User Experience",
+  "SentimentAnalysis": "Sentiment Analysis",
+  "DynamicPricing": "Dynamic Pricing",
+  "AIChatbot": "AI Chatbot",
+  "PredictiveChurnAnalysis": "Churn Analysis",
+  "SmartIntegrationMarketplace": "Integration Hub",
+  "AdvancedWorkflowAutomation": "Workflow Automation",
+  "SmartReportingEngine": "Smart Reports",
+  "MobileExperience": "Mobile Experience",
+  "AdvancedDataVisualization": "Advanced Analytics",
+  "CustomerJourney": "Customer Journey Dashboard",
+  "SalesCoaching": "Sales Coaching Dashboard",
+  "LeadQualification": "Predictive Lead Qualification Dashboard",
+  // Advanced CRM Features
+  "AILeadQualification": "AI Lead Qualification",
+  "IntelligentDealInsights": "Intelligent Deal Insights",
+  "ConversationalAI": "Conversational AI Assistant",
+  "RealTimeBI": "Real-Time Business Intelligence",
+  "WorkflowAutomation": "Enhanced Workflow Automation",
+  "AdvancedMobile": "Advanced Mobile Features",
+  "AdvancedForecasting": "Advanced Forecasting",
+  "SocialMediaIntegration": "Social Media Integration",
+  "AdvancedEmailMarketing": "Advanced Email Marketing",
+  "UnifiedCommunicationHub": "Unified Communication Hub",
   "Profile": "My Profile",
   "Settings": "Settings",
   "Reports": "Reports",
   "Integrations": "Integrations",
+  // Security & Admin
+  "SecurityCenter": "Security Center",
+        "SecurityDashboard": "Security Dashboard",
+        "AuditLogger": "Audit Logger",
+        "GDPRTools": "GDPR Tools",
+        "FieldEncryption": "Field Encryption",
+        "SSOIntegration": "SSO Integration",
+        "AdvancedMFA": "Advanced Multi-Factor Authentication",
+        "SecurityIncidentResponse": "Security Incident Response",
+        "VulnerabilityManagement": "Vulnerability Management",
+        "DataLossPrevention": "Data Loss Prevention",
+  // Development & Testing
+  "TestRunner": "Test Runner",
+  "IntegrationTests": "Integration Tests",
+  "SystemTester": "System Tester",
+  "PerformanceMonitor": "Performance Monitor",
+  "ProductionReadiness": "Production Readiness",
+  // Tools & Utilities
+  "AccessibilityTools": "Accessibility Tools",
+  "PWAManager": "PWA Manager",
+  "WebhookManager": "Webhook Manager",
+  "RealtimeSync": "Realtime Sync",
+  "UserGuide": "User Guide",
+  "SystemDocumentation": "System Documentation",
 };
 
 export default function Layout({ children }) {
@@ -151,6 +497,11 @@ export default function Layout({ children }) {
   const [user, setUser] = React.useState(null);
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [commandOpen, setCommandOpen] = React.useState(false);
+  const [aiAssistantOpen, setAiAssistantOpen] = React.useState(false);
+  const isMobile = useIsMobile();
+
+  // Initialize keyboard navigation
+  useKeyboardNavigation();
 
   React.useEffect(() => {
     base44.auth.me().then(setUser).catch(() => {});
@@ -169,6 +520,19 @@ export default function Layout({ children }) {
       if ((e.metaKey || e.ctrlKey) && e.key === '/') {
         e.preventDefault();
         setSearchOpen(true);
+      }
+
+      // Escape to close modals
+      if (e.key === 'Escape') {
+        setSearchOpen(false);
+        setCommandOpen(false);
+        setAiAssistantOpen(false);
+      }
+      
+      // Cmd+Shift+A or Ctrl+Shift+A for AI Assistant
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'A') {
+        e.preventDefault();
+        setAiAssistantOpen(true);
       }
     };
 
@@ -194,20 +558,23 @@ export default function Layout({ children }) {
   };
 
   return (
-    <SidebarProvider>
-      <div className="min-h-screen flex w-full bg-gray-50">
-        <Sidebar className="border-none shadow-2xl bg-gradient-to-b from-slate-900 to-slate-950">
-          <SidebarHeader className="border-b border-white/5 p-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                <TrendingUp className="w-6 h-6 text-white" />
+    <>
+      <SkipToContent />
+      <SidebarProvider>
+        <div className="min-h-screen flex w-full bg-gray-50">
+          {/* Desktop Sidebar */}
+          <Sidebar className={`border-none shadow-2xl bg-gradient-to-b from-slate-900 to-slate-950 ${isMobile ? 'hidden' : ''}`}>
+            <SidebarHeader className="border-b border-white/5 p-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                  <TrendingUp className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-white text-lg tracking-tight">SalesPro</h2>
+                  <p className="text-xs text-gray-400">Enterprise CRM</p>
+                </div>
               </div>
-              <div>
-                <h2 className="font-bold text-white text-lg tracking-tight">SalesPro</h2>
-                <p className="text-xs text-gray-400">Enterprise CRM</p>
-              </div>
-            </div>
-          </SidebarHeader>
+            </SidebarHeader>
           
           <SidebarContent className="p-3">
             <SidebarGroup>
@@ -228,8 +595,188 @@ export default function Layout({ children }) {
                               : 'text-gray-300 hover:bg-white/5 hover:text-white'
                           }`}
                         >
-                          <Link to={item.url} className="flex items-center gap-3 px-4 py-3">
+                          <Link 
+                            to={item.url} 
+                            className="flex items-center gap-3 px-4 py-3"
+                            aria-label={`Navigate to ${item.title}`}
+                            aria-current={isActive ? 'page' : undefined}
+                          >
                             <item.icon className={`w-5 h-5 ${isActive ? 'text-indigo-400' : 'text-gray-400'}`} />
+                            <span className="font-medium">{item.title}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+
+            <SidebarGroup>
+              <SidebarGroupLabel className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">
+                AI Features
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu className="space-y-1">
+                  {aiNavigationItems.map((item) => {
+                    const isActive = location.pathname === item.url;
+                    return (
+                      <SidebarMenuItem key={item.title}>
+                        <SidebarMenuButton 
+                          asChild 
+                          className={`transition-all duration-200 rounded-xl ${
+                            isActive 
+                              ? 'bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-white border border-purple-500/30 shadow-lg shadow-purple-500/10' 
+                              : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                          }`}
+                        >
+                          <Link 
+                            to={item.url} 
+                            className="flex items-center gap-3 px-4 py-3"
+                            aria-label={`Navigate to ${item.title}`}
+                            aria-current={isActive ? 'page' : undefined}
+                          >
+                            <item.icon className={`w-5 h-5 ${isActive ? 'text-purple-400' : 'text-gray-400'}`} />
+                            <span className="font-medium">{item.title}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+
+            <SidebarGroup>
+              <SidebarGroupLabel className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">
+                Advanced CRM
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu className="space-y-1">
+                  {advancedCrmItems.map((item) => {
+                    const isActive = location.pathname === item.url;
+                    return (
+                      <SidebarMenuItem key={item.title}>
+                        <SidebarMenuButton 
+                          asChild 
+                          className={`transition-all duration-200 rounded-xl ${
+                            isActive 
+                              ? 'bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-white border border-emerald-500/30 shadow-lg shadow-emerald-500/10' 
+                              : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                          }`}
+                        >
+                          <Link 
+                            to={item.url} 
+                            className="flex items-center gap-3 px-4 py-3"
+                            aria-label={`Navigate to ${item.title}`}
+                            aria-current={isActive ? 'page' : undefined}
+                          >
+                            <item.icon className={`w-5 h-5 ${isActive ? 'text-emerald-400' : 'text-gray-400'}`} />
+                            <span className="font-medium">{item.title}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+
+            <SidebarGroup>
+              <SidebarGroupLabel className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">
+                Security & Admin
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu className="space-y-1">
+                  {securityAdminItems.map((item) => {
+                    const isActive = location.pathname === item.url;
+                    return (
+                      <SidebarMenuItem key={item.title}>
+                        <SidebarMenuButton 
+                          asChild 
+                          className={`transition-all duration-200 rounded-xl ${
+                            isActive 
+                              ? 'bg-gradient-to-r from-red-500/20 to-orange-500/20 text-white border border-red-500/30 shadow-lg shadow-red-500/10' 
+                              : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                          }`}
+                        >
+                          <Link 
+                            to={item.url} 
+                            className="flex items-center gap-3 px-4 py-3"
+                            aria-label={`Navigate to ${item.title}`}
+                            aria-current={isActive ? 'page' : undefined}
+                          >
+                            <item.icon className={`w-5 h-5 ${isActive ? 'text-red-400' : 'text-gray-400'}`} />
+                            <span className="font-medium">{item.title}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+
+            <SidebarGroup>
+              <SidebarGroupLabel className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">
+                Development & Testing
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu className="space-y-1">
+                  {devTestingItems.map((item) => {
+                    const isActive = location.pathname === item.url;
+                    return (
+                      <SidebarMenuItem key={item.title}>
+                        <SidebarMenuButton 
+                          asChild 
+                          className={`transition-all duration-200 rounded-xl ${
+                            isActive 
+                              ? 'bg-gradient-to-r from-blue-500/20 to-cyan-500/20 text-white border border-blue-500/30 shadow-lg shadow-blue-500/10' 
+                              : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                          }`}
+                        >
+                          <Link 
+                            to={item.url} 
+                            className="flex items-center gap-3 px-4 py-3"
+                            aria-label={`Navigate to ${item.title}`}
+                            aria-current={isActive ? 'page' : undefined}
+                          >
+                            <item.icon className={`w-5 h-5 ${isActive ? 'text-blue-400' : 'text-gray-400'}`} />
+                            <span className="font-medium">{item.title}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+
+            <SidebarGroup>
+              <SidebarGroupLabel className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">
+                Tools & Utilities
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu className="space-y-1">
+                  {toolsUtilitiesItems.map((item) => {
+                    const isActive = location.pathname === item.url;
+                    return (
+                      <SidebarMenuItem key={item.title}>
+                        <SidebarMenuButton 
+                          asChild 
+                          className={`transition-all duration-200 rounded-xl ${
+                            isActive 
+                              ? 'bg-gradient-to-r from-yellow-500/20 to-amber-500/20 text-white border border-yellow-500/30 shadow-lg shadow-yellow-500/10' 
+                              : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                          }`}
+                        >
+                          <Link 
+                            to={item.url} 
+                            className="flex items-center gap-3 px-4 py-3"
+                            aria-label={`Navigate to ${item.title}`}
+                            aria-current={isActive ? 'page' : undefined}
+                          >
+                            <item.icon className={`w-5 h-5 ${isActive ? 'text-yellow-400' : 'text-gray-400'}`} />
                             <span className="font-medium">{item.title}</span>
                           </Link>
                         </SidebarMenuButton>
@@ -244,12 +791,16 @@ export default function Layout({ children }) {
           <SidebarFooter className="border-t border-white/5 p-4">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center justify-between bg-white/5 rounded-xl p-3 hover:bg-white/10 transition-all w-full">
+                <button 
+                  className="flex items-center justify-between bg-white/5 rounded-xl p-3 hover:bg-white/10 transition-all w-full"
+                  aria-label="User menu"
+                  aria-expanded="false"
+                >
                   <div className="flex items-center gap-3">
                     {user?.profile_photo_url ? (
                       <img 
                         src={user.profile_photo_url} 
-                        alt={user.full_name}
+                        alt={`${user.full_name} profile photo`}
                         className="w-9 h-9 rounded-full object-cover shadow-md"
                       />
                     ) : (
@@ -297,16 +848,29 @@ export default function Layout({ children }) {
           </SidebarFooter>
         </Sidebar>
 
-        <main className="flex-1 flex flex-col overflow-hidden">
-          {/* Enhanced Header */}
-          <header className="bg-white border-b border-gray-200 px-6 py-4 shadow-sm">
+        <main className="flex-1 flex flex-col overflow-hidden" id="main-content" role="main">
+          {/* Mobile Header */}
+          {isMobile ? (
+            <MobileHeader
+              title={getCurrentPageTitle()}
+              user={user}
+              primaryOrg={primaryOrg}
+              onSearchOpen={() => setSearchOpen(true)}
+              onCommandOpen={() => setCommandOpen(true)}
+            />
+          ) : (
+            /* Desktop Header */
+            <header className="bg-white border-b border-gray-200 px-6 py-4 shadow-sm" role="banner">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <SidebarTrigger className="lg:hidden hover:bg-gray-100 p-2 rounded-lg transition-colors" />
+                <SidebarTrigger 
+                  className="lg:hidden hover:bg-gray-100 p-2 rounded-lg transition-colors" 
+                  aria-label="Toggle sidebar"
+                />
                 {primaryOrg?.logo_url ? (
                   <img 
                     src={primaryOrg.logo_url} 
-                    alt={primaryOrg.organization_name}
+                    alt={`${primaryOrg.organization_name} logo`}
                     className="h-10 object-contain"
                   />
                 ) : (
@@ -330,6 +894,7 @@ export default function Layout({ children }) {
                   size="sm"
                   onClick={() => setCommandOpen(true)}
                   className="gap-2 hidden md:flex"
+                  aria-label="Open quick actions (Cmd+K)"
                 >
                   <Command className="w-4 h-4" />
                   <span>Quick Actions</span>
@@ -343,6 +908,7 @@ export default function Layout({ children }) {
                   size="sm"
                   onClick={() => setSearchOpen(true)}
                   className="gap-2"
+                  aria-label="Open search (Cmd+/)"
                 >
                   <SearchIcon className="w-4 h-4" />
                   <span className="hidden md:inline">Search</span>
@@ -351,7 +917,23 @@ export default function Layout({ children }) {
                   </kbd>
                 </Button>
 
-                <NotificationsCenter />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAiAssistantOpen(true)}
+                  className="gap-2"
+                  aria-label="Open AI Assistant (Cmd+Shift+A)"
+                >
+                  <Bot className="w-4 h-4" />
+                  <span className="hidden md:inline">AI Assistant</span>
+                  <kbd className="hidden lg:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium">
+                    <span className="text-xs">⌘⇧</span>A
+                  </kbd>
+                </Button>
+
+                <NotificationCenter />
+                
+                <ThemeToggle />
                 
                 {user?.profile_photo_url ? (
                   <img 
@@ -371,17 +953,37 @@ export default function Layout({ children }) {
                   <p className="text-xs text-gray-500">{user?.job_title || user?.user_role}</p>
                 </div>
               </div>
-            </div>
-          </header>
+              </div>
+            </header>
+          )}
 
-          <div className="flex-1 overflow-auto">
+          <div className={`flex-1 overflow-auto ${isMobile ? 'pb-20' : ''}`}>
             {children}
           </div>
         </main>
+
+        {/* Mobile Bottom Navigation */}
+        {isMobile && (
+          <MobileBottomNavigation
+            onSearchOpen={() => setSearchOpen(true)}
+            onCommandOpen={() => setCommandOpen(true)}
+          />
+        )}
       </div>
 
-      <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
-      <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
+      <FocusTrap active={searchOpen}>
+        <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
+      </FocusTrap>
+      
+      <FocusTrap active={commandOpen}>
+        <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
+      </FocusTrap>
+      
+      <AIAssistant 
+        isOpen={aiAssistantOpen} 
+        onToggle={() => setAiAssistantOpen(!aiAssistantOpen)} 
+      />
     </SidebarProvider>
+    </>
   );
 }

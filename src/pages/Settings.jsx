@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useTheme } from "@/hooks/useTheme.jsx";
 import {
   Settings as SettingsIcon,
   User,
@@ -48,6 +49,7 @@ export default function Settings() {
     is_active: true,
   });
 
+  const { theme, toggleTheme, isDark } = useTheme();
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -236,7 +238,7 @@ export default function Settings() {
                   <Label>Dark Mode</Label>
                   <p className="text-xs text-gray-500">Switch to dark theme</p>
                 </div>
-                <Switch />
+                <Switch checked={isDark} onCheckedChange={toggleTheme} />
               </div>
               <div className="flex items-center justify-between">
                 <div>

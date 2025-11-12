@@ -13,9 +13,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { useApiErrorHandler } from '@/hooks/useErrorHandler';
 
 export default function VisitCheckIn({ visit, onUpdate }) {
   const [currentLocation, setCurrentLocation] = useState(null);
+  const { handleApiError } = useApiErrorHandler();
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const queryClient = useQueryClient();
 
@@ -91,7 +93,7 @@ export default function VisitCheckIn({ visit, onUpdate }) {
       
       toast.success("Checked in successfully");
     } catch (error) {
-      toast.error("Failed to check in: " + error.message);
+      handleApiError(error, 'check-in');
     }
   };
 
@@ -112,7 +114,7 @@ export default function VisitCheckIn({ visit, onUpdate }) {
       
       toast.success("Checked out successfully");
     } catch (error) {
-      toast.error("Failed to check out: " + error.message);
+      handleApiError(error, 'check-out');
     }
   };
 

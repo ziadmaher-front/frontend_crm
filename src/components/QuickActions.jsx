@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -27,12 +28,17 @@ import {
   Clock
 } from "lucide-react";
 import { toast } from "sonner";
+import SendEmailDialog from "./SendEmailDialog";
+import { getQuickActionsPrefs, saveQuickActionsPrefs } from "@/store/userPreferences";
 
 export default function QuickActions({ relatedTo }) {
   const [showTaskDialog, setShowTaskDialog] = useState(false);
   const [showActivityDialog, setShowActivityDialog] = useState(false);
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [currentLocation, setCurrentLocation] = useState(null);
+  const [activeCategory, setActiveCategory] = useState('Calls');
+  const [prefs, setPrefs] = useState(getQuickActionsPrefs());
 
   const [taskForm, setTaskForm] = useState({
     title: "",
@@ -69,6 +75,47 @@ export default function QuickActions({ relatedTo }) {
       setTaskForm(prev => ({ ...prev, assigned_to: user.email }));
       setActivityForm(prev => ({ ...prev, assigned_to: user.email }));
     });
+  }, []);
+
+  useEffect(() => {
+    // persist preferences when changed
+    saveQuickActionsPrefs(prefs);
+  }, [prefs]);
+
+  // Listen for Command Palette follow-up macro trigger
+  useEffect(() => {
+    const handler = () => {
+      runFollowUpMacro();
+    };
+    window.addEventListener('crm:run-followup', handler);
+    return () => window.removeEventListener('crm:run-followup', handler);
+  }, [currentUser, relatedTo]);
+
+  // Listen for Command Palette open actions
+  useEffect(() => {
+    const openEmail = () => {
+      setActiveCategory('Email');
+      setShowEmailDialog(true);
+    };
+    const openCall = () => {
+      setActiveCategory('Calls');
+      setActivityForm(prev => ({ ...prev, activity_type: 'Call' }));
+      setShowActivityDialog(true);
+    };
+    const openMeeting = () => {
+      setActiveCategory('Schedule');
+      setActivityForm(prev => ({ ...prev, activity_type: 'Meeting', status: 'Scheduled' }));
+      setShowActivityDialog(true);
+    };
+
+    window.addEventListener('crm:open-quick-actions-email', openEmail);
+    window.addEventListener('crm:open-quick-actions-call', openCall);
+    window.addEventListener('crm:open-quick-actions-meeting', openMeeting);
+    return () => {
+      window.removeEventListener('crm:open-quick-actions-email', openEmail);
+      window.removeEventListener('crm:open-quick-actions-call', openCall);
+      window.removeEventListener('crm:open-quick-actions-meeting', openMeeting);
+    };
   }, []);
 
   // Get current location
@@ -195,28 +242,121 @@ export default function QuickActions({ relatedTo }) {
     }
   };
 
+  // Macro: Follow-up — logs a call and schedules a task, then opens email dialog
+  const runFollowUpMacro = async () => {
+    try {
+      toast.loading("Running follow-up...");
+      const nowIso = new Date().toISOString();
+      await createActivityMutation.mutateAsync({
+        activity_type: "Call",
+        subject: "Follow-up call",
+        description: "Quick follow-up call logged via macro",
+        activity_date: nowIso,
+        outcome: "Successful",
+        status: "Completed",
+        related_to_type: relatedTo.type,
+        related_to_id: relatedTo.id,
+        assigned_to: currentUser?.email || "",
+      });
+
+      await createTaskMutation.mutateAsync({
+        title: "Send follow-up email",
+        description: "Auto-created from follow-up macro",
+        due_date: nowIso.slice(0, 10),
+        due_time: "09:00",
+        priority: "Medium",
+        status: "Not Started",
+        related_to_type: relatedTo.type,
+        related_to_id: relatedTo.id,
+        assigned_to: currentUser?.email || "",
+      });
+
+      toast.success("Follow-up created: activity + task");
+      setShowEmailDialog(true);
+    } catch (e) {
+      toast.error("Follow-up failed: " + e.message);
+    }
+  };
+
   return (
     <>
-      <div className="flex gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowTaskDialog(true)}
-          className="gap-2"
-        >
-          <CheckSquare className="w-4 h-4" />
-          Schedule Task
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowActivityDialog(true)}
-          className="gap-2"
-        >
-          <ActivityIcon className="w-4 h-4" />
-          Log Activity
-        </Button>
-      </div>
+      {/* Tabbed quick actions */}
+      <Tabs value={activeCategory} onValueChange={setActiveCategory} className="w-full">
+        <TabsList className="mb-2">
+          {prefs.categories.map((cat) => (
+            <TabsTrigger key={cat} value={cat}>{cat}</TabsTrigger>
+          ))}
+        </TabsList>
+
+        {/* Calls */}
+        <TabsContent value="Calls">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => { setActivityForm({
+              ...activityForm,
+              activity_type: 'Call',
+              subject: activityForm.subject || 'Follow-up call',
+            }); setShowActivityDialog(true); }} className="gap-2">
+              <ActivityIcon className="w-4 h-4" />
+              Log Call
+            </Button>
+            <Button variant="outline" size="sm" onClick={runFollowUpMacro} className="gap-2">
+              <Clock className="w-4 h-4" />
+              Follow-up
+            </Button>
+          </div>
+        </TabsContent>
+
+        {/* Email */}
+        <TabsContent value="Email">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => setShowEmailDialog(true)} className="gap-2">
+              <Calendar className="w-4 h-4" />
+              Send Email
+            </Button>
+            <Button variant="outline" size="sm" onClick={runFollowUpMacro} className="gap-2">
+              <Clock className="w-4 h-4" />
+              Follow-up
+            </Button>
+          </div>
+        </TabsContent>
+
+        {/* Messaging */}
+        <TabsContent value="Messaging">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => setShowActivityDialog(true)} className="gap-2">
+              <ActivityIcon className="w-4 h-4" />
+              Log Message
+            </Button>
+            <Button variant="outline" size="sm" onClick={runFollowUpMacro} className="gap-2">
+              <Clock className="w-4 h-4" />
+              Follow-up
+            </Button>
+          </div>
+        </TabsContent>
+
+        {/* Schedule */}
+        <TabsContent value="Schedule">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => setShowTaskDialog(true)} className="gap-2">
+              <CheckSquare className="w-4 h-4" />
+              Schedule Task
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => { setActivityForm({
+              ...activityForm,
+              activity_type: 'Meeting',
+              subject: activityForm.subject || 'Customer meeting',
+              status: 'Scheduled',
+            }); setShowActivityDialog(true); }} className="gap-2">
+              <Calendar className="w-4 h-4" />
+              Schedule Meeting
+            </Button>
+            <Button variant="outline" size="sm" onClick={runFollowUpMacro} className="gap-2">
+              <Clock className="w-4 h-4" />
+              Follow-up
+            </Button>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Schedule Task Dialog */}
       <Dialog open={showTaskDialog} onOpenChange={setShowTaskDialog}>
@@ -459,6 +599,14 @@ export default function QuickActions({ relatedTo }) {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Send Email Dialog */}
+      <SendEmailDialog
+        open={showEmailDialog}
+        onOpenChange={setShowEmailDialog}
+        recipient={null}
+        relatedTo={relatedTo}
+      />
     </>
   );
 }

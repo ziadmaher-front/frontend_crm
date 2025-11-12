@@ -11,7 +11,6 @@ import {
   Edit, 
   Mail, 
   Phone, 
-  Building2, 
   Globe,
   Users,
   TrendingUp,
@@ -26,6 +25,7 @@ import { createPageUrl } from "@/utils";
 import { format } from "date-fns";
 import ActivityTimeline from "../components/ActivityTimeline";
 import QuickActions from "../components/QuickActions";
+import AIInsights from "../components/AIInsights";
 import CalendarScheduler from "../components/CalendarScheduler"; // Added CalendarScheduler import
 import ClickToCall from "../components/ClickToCall"; // Added ClickToCall import
 import WhatsAppSender from "../components/WhatsAppSender"; // Added WhatsAppSender import
@@ -117,7 +117,6 @@ export default function AccountDetails() {
     'Competitor': 'bg-gray-100 text-gray-700 border-gray-200',
   };
 
-  const totalDealValue = deals.reduce((sum, d) => sum + (d.amount || 0), 0);
   const wonDeals = deals.filter(d => d.stage === 'Closed Won');
   const wonValue = wonDeals.reduce((sum, d) => sum + (d.amount || 0), 0);
 
@@ -193,6 +192,18 @@ export default function AccountDetails() {
       <div className="p-6 lg:p-8 max-w-7xl mx-auto">
         <div className="grid grid-cols-3 gap-6">
           <div className="col-span-2 space-y-6">
+            {/* AI Insights */}
+            <AIInsights 
+              entity={account} 
+              entityType="Account"
+              data={{ 
+                accounts: [account], 
+                contacts: contacts,
+                deals: deals,
+                activities: activities 
+              }}
+            />
+
             <div className="grid grid-cols-4 gap-4">
               <Card className="border-none shadow-md">
                 <CardContent className="p-4">

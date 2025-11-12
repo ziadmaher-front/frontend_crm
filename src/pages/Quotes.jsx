@@ -41,6 +41,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { AccessibleTable } from '@/components/AccessibilityEnhancements';
 
 const CURRENCY_SYMBOLS = {
   USD: "$",
@@ -388,7 +389,7 @@ export default function Quotes() {
   });
 
   const generatePDFMutation = useMutation({
-    mutationFn: async (quote) => {
+    mutationFn: async () => {
       if (!activeTemplate) {
         throw new Error("No active template found. Please upload a template first.");
       }
@@ -1152,58 +1153,44 @@ export default function Quotes() {
 
               {rfqFormData.line_items.length > 0 && (
                 <div className="space-y-2 mt-4">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-100">
-                      <tr>
-                        <th className="p-2 text-left">Product</th>
-                        <th className="p-2 text-right">Qty</th>
-                        <th className="p-2 text-right">List Price</th>
-                        <th className="p-2 text-right">Discount</th>
-                        <th className="p-2 text-right">Unit Price</th>
-                        <th className="p-2 text-right">Total</th>
-                        <th className="p-2"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rfqFormData.line_items.map((item, index) => {
-                        const requiresApproval = checkDiscountApproval(item.requested_discount_percent);
-                        
-                        return (
-                          <tr key={index} className="border-b">
-                            <td className="p-2">
-                              <div>
-                                <p className="font-medium">{item.product_name}</p>
-                                {item.requested_discount_reason && (
-                                  <p className="text-xs text-amber-600">Reason: {item.requested_discount_reason}</p>
-                                )}
-                                {requiresApproval && (
-                                  <Badge className="mt-1 bg-amber-100 text-amber-700 text-xs">
-                                    <AlertCircle className="w-3 h-3 mr-1" />
-                                    Requires approval
-                                  </Badge>
-                                )}
-                              </div>
-                            </td>
-                            <td className="p-2 text-right">{item.quantity}</td>
-                            <td className="p-2 text-right">{CURRENCY_SYMBOLS[rfqFormData.currency]}{item.list_price.toFixed(2)}</td>
-                            <td className="p-2 text-right">{item.requested_discount_percent}%</td>
-                            <td className="p-2 text-right font-semibold">{CURRENCY_SYMBOLS[rfqFormData.currency]}{item.unit_price.toFixed(2)}</td>
-                            <td className="p-2 text-right font-semibold">{CURRENCY_SYMBOLS[rfqFormData.currency]}{item.total.toFixed(2)}</td>
-                            <td className="p-2">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleRemoveRFQLineItem(index)}
-                              >
-                                <Trash2 className="w-4 h-4 text-red-500" />
-                              </Button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                  <AccessibleTable
+                    caption="RFQ Line Items showing product details, quantities, pricing, and discounts"
+                    headers={['Product', 'Qty', 'List Price', 'Discount', 'Unit Price', 'Total', 'Actions']}
+                    data={rfqFormData.line_items.map((item, index) => {
+                      const requiresApproval = checkDiscountApproval(item.requested_discount_percent);
+                      
+                      return [
+                        <div key={`product-${index}`}>
+                          <p className="font-medium">{item.product_name}</p>
+                          {item.requested_discount_reason && (
+                            <p className="text-xs text-amber-600">Reason: {item.requested_discount_reason}</p>
+                          )}
+                          {requiresApproval && (
+                            <Badge className="mt-1 bg-amber-100 text-amber-700 text-xs">
+                              <AlertCircle className="w-3 h-3 mr-1" />
+                              Requires approval
+                            </Badge>
+                          )}
+                        </div>,
+                        <span key={`qty-${index}`}>{item.quantity}</span>,
+                        <span key={`list-price-${index}`}>{CURRENCY_SYMBOLS[rfqFormData.currency]}{item.list_price.toFixed(2)}</span>,
+                        <span key={`discount-${index}`}>{item.requested_discount_percent}%</span>,
+                        <span key={`unit-price-${index}`} className="font-semibold">{CURRENCY_SYMBOLS[rfqFormData.currency]}{item.unit_price.toFixed(2)}</span>,
+                        <span key={`total-${index}`} className="font-semibold">{CURRENCY_SYMBOLS[rfqFormData.currency]}{item.total.toFixed(2)}</span>,
+                        <Button
+                          key={`action-${index}`}
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveRFQLineItem(index)}
+                          aria-label={`Remove ${item.product_name} from RFQ`}
+                        >
+                          <Trash2 className="w-4 h-4 text-red-500" />
+                        </Button>
+                      ];
+                    })}
+                    className="w-full text-sm"
+                  />
 
                   <div className="bg-white p-4 rounded-lg space-y-2 border">
                     <div className="flex justify-between">

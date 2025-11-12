@@ -4,8 +4,11 @@ import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { AccessibleButton } from "@/components/AccessibilityEnhancements";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/use-toast";
+import contactService from "@/services/contactService";
 import {
   Plus,
   Search,
@@ -20,7 +23,17 @@ import {
   LayoutGrid, // New import
   List,       // New import
   Table,      // New import
+  Filter,
+  BarChart3,
+  Target,
+  Trash2,
+  SortAsc,
+  SortDesc,
 } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { CardSkeleton } from "@/components/LoadingStates";
+import { SwipeToDelete, TouchCard, PullToRefresh } from "@/components/TouchInteractions";
+import { AccessibleFormField } from '@/components/AccessibilityEnhancements';
 import {
   Dialog,
   DialogContent,
@@ -40,12 +53,24 @@ import { Textarea } from "@/components/ui/textarea";
 import AssignmentManager from "../components/AssignmentManager";
 import BulkOperations from "../components/BulkOperations";
 import { createPageUrl } from "@/utils";
+import { PageSkeleton } from "@/components/ui/loading-states";
 
 export default function Contacts() {
   const [searchQuery, setSearchQuery] = useState("");
   const [view, setView] = useState("grid"); // New state for view
   const [showDialog, setShowDialog] = useState(false);
   const [editingContact, setEditingContact] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [filterAccount, setFilterAccount] = useState("all");
+  const [filterOwner, setFilterOwner] = useState("all");
+  const [filterJobTitle, setFilterJobTitle] = useState("");
+  const [filterDepartment, setFilterDepartment] = useState("");
+  const [filterCountry, setFilterCountry] = useState("");
+  const [sortBy, setSortBy] = useState("created_date");
+  const [sortOrder, setSortOrder] = useState("desc");
+  const isMobile = useIsMobile();
+  const { toast } = useToast();
   const [formData, setFormData] = useState({
     first_name: "",
     last_name: "",
@@ -105,25 +130,53 @@ export default function Contacts() {
     }
   };
 
-  const { data: contacts = [], isLoading } = useQuery({
-    queryKey: ['contacts'],
-    queryFn: () => base44.entities.Contact.list('-created_date'),
+  const { data: contacts = [], isLoading: contactsLoading } = useQuery({
+    queryKey: ['contacts', searchQuery, filterAccount, filterOwner, filterJobTitle, filterDepartment, filterCountry, sortBy, sortOrder],
+    queryFn: () => contactService.getAllContacts({
+      searchTerm: searchQuery,
+      filterAccount,
+      filterOwner,
+      filterJobTitle,
+      filterDepartment,
+      filterCountry,
+      sortBy,
+      sortOrder
+    }),
+    select: (data) => data.success ? data.data : []
   });
 
-  const { data: accounts = [] } = useQuery({
+  // Analytics query
+  const { data: analytics, isLoading: analyticsLoading } = useQuery({
+    queryKey: ['contactAnalytics'],
+    queryFn: () => contactService.getContactAnalytics(),
+    enabled: showAnalytics,
+    select: (data) => data.success ? data.data : null
+  });
+
+  // Handle pull-to-refresh
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await queryClient.invalidateQueries({ queryKey: ['contacts'] });
+    setTimeout(() => setIsRefreshing(false), 1000);
+  };
+
+  const { data: accounts = [], isLoading: accountsLoading } = useQuery({
     queryKey: ['accounts'],
     queryFn: () => base44.entities.Account.list(),
   });
 
-  const { data: users = [] } = useQuery({
+  const { data: users = [], isLoading: usersLoading } = useQuery({
     queryKey: ['users'],
     queryFn: () => base44.entities.User.list(),
   });
 
-  const { data: productLines = [] } = useQuery({
+  const { data: productLines = [], isLoading: productLinesLoading } = useQuery({
     queryKey: ['productLines'],
     queryFn: () => base44.entities.ProductLine.list(),
   });
+
+  // Combined loading state
+  const isLoading = contactsLoading || accountsLoading || usersLoading || productLinesLoading;
 
   const generateSerialNumber = async () => {
     const setting = serializationSettings.find(s =>
@@ -176,26 +229,73 @@ export default function Contacts() {
   const createMutation = useMutation({
     mutationFn: async (data) => {
       const serialNumber = await generateSerialNumber();
-      return base44.entities.Contact.create({
+      const result = await contactService.createContact({
         ...data,
         serial_number: serialNumber
       });
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      return result.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['contactAnalytics'] });
       queryClient.invalidateQueries({ queryKey: ['serializationSettings'] });
       setShowDialog(false);
       resetForm();
+      toast({
+        title: "Success",
+        description: "Contact created successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create contact",
+        variant: "destructive",
+      });
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Contact.update(id, data),
+    mutationFn: ({ id, data }) => contactService.updateContact(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['contactAnalytics'] });
       setShowDialog(false);
       setEditingContact(null);
       resetForm();
+      toast({
+        title: "Success",
+        description: "Contact updated successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update contact",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => contactService.deleteContact(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['contactAnalytics'] });
+      toast({
+        title: "Success",
+        description: "Contact deleted successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete contact",
+        variant: "destructive",
+      });
     },
   });
 
@@ -254,12 +354,62 @@ export default function Contacts() {
     window.location.href = createPageUrl('ContactDetails') + '?id=' + contact.id;
   };
 
-  const filteredContacts = contacts.filter(contact =>
-    contact.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    contact.last_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    contact.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    contact.job_title?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // New handler functions for enhanced functionality
+  const handleDelete = (contactId) => {
+    if (window.confirm('Are you sure you want to delete this contact?')) {
+      deleteMutation.mutate(contactId);
+    }
+  };
+
+  const handleSearch = (value) => {
+    setSearchQuery(value);
+  };
+
+  const handleFilterChange = (filterType, value) => {
+    switch (filterType) {
+      case 'account':
+        setFilterAccount(value);
+        break;
+      case 'owner':
+        setFilterOwner(value);
+        break;
+      case 'jobTitle':
+        setFilterJobTitle(value);
+        break;
+      case 'department':
+        setFilterDepartment(value);
+        break;
+      case 'country':
+        setFilterCountry(value);
+        break;
+    }
+  };
+
+  const handleSortChange = (field) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const toggleAnalytics = () => {
+    setShowAnalytics(!showAnalytics);
+  };
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setFilterAccount("");
+    setFilterOwner("");
+    setFilterJobTitle("");
+    setFilterDepartment("");
+    setFilterCountry("");
+    setSortBy("created_date");
+    setSortOrder("desc");
+  };
+
+  const filteredContacts = contacts;
 
   const getAccountName = (accountId) => {
     const account = accounts.find(a => a.id === accountId);
@@ -277,69 +427,189 @@ export default function Contacts() {
   };
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-            <Users className="w-8 h-8 text-purple-500" />
-            Contacts
+    <>
+      {isLoading ? (
+        <PageSkeleton />
+      ) : (
+        <div className={`p-4 lg:p-8 space-y-4 lg:space-y-6 ${isMobile ? 'pb-20' : ''}`}>
+          {/* Professional CRM Header */}
+          <div className="crm-page-header">
+            <div>
+              <h1 className="crm-page-title">
+                <Users className={`${isMobile ? 'w-6 h-6' : 'w-8 h-8'} text-purple-500`} />
+                Contacts
           </h1>
-          <p className="text-gray-600 mt-1">Manage your business contacts and relationships</p>
+          <p className="crm-page-subtitle">Manage your business contacts and relationships</p>
         </div>
-        <div className="flex gap-3">
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-            <Button
+        <div className={`flex gap-3 ${isMobile ? 'w-full flex-col' : ''}`}>
+          <div className={`flex gap-1 bg-gray-100 rounded-lg p-1 ${isMobile ? 'w-full' : ''}`}>
+            <AccessibleButton
               variant={view === "grid" ? "default" : "ghost"}
               size="sm"
               onClick={() => handleViewChange("grid")}
-              className={view === "grid" ? "bg-white shadow-sm" : ""}
+              className={`${view === "grid" ? "bg-white shadow-sm" : ""} ${isMobile ? 'flex-1' : ''}`}
+              ariaLabel="Switch to grid view"
             >
               <LayoutGrid className="w-4 h-4" />
-            </Button>
-            <Button
+              {isMobile && <span className="ml-2">Grid</span>}
+            </AccessibleButton>
+            <AccessibleButton
               variant={view === "list" ? "default" : "ghost"}
               size="sm"
               onClick={() => handleViewChange("list")}
-              className={view === "list" ? "bg-white shadow-sm" : ""}
+              className={`${view === "list" ? "bg-white shadow-sm" : ""} ${isMobile ? 'flex-1' : ''}`}
+              ariaLabel="Switch to list view"
             >
               <List className="w-4 h-4" />
-            </Button>
-            <Button
+              {isMobile && <span className="ml-2">List</span>}
+            </AccessibleButton>
+            <AccessibleButton
               variant={view === "table" ? "default" : "ghost"}
               size="sm"
               onClick={() => handleViewChange("table")}
-              className={view === "table" ? "bg-white shadow-sm" : ""}
+              className={`${view === "table" ? "bg-white shadow-sm" : ""} ${isMobile ? 'flex-1' : ''}`}
+              ariaLabel="Switch to table view"
             >
               <Table className="w-4 h-4" />
-            </Button>
+              {isMobile && <span className="ml-2">Table</span>}
+            </AccessibleButton>
           </div>
           <Button
+            variant={showAnalytics ? "default" : "outline"}
+            size="sm"
+            onClick={toggleAnalytics}
+            className={isMobile ? 'w-full' : ''}
+          >
+            <BarChart3 className="w-4 h-4 mr-2" />
+            Analytics
+          </Button>
+          <AccessibleButton
             onClick={() => {
               setEditingContact(null);
               resetForm();
               setShowDialog(true);
             }}
-            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-lg"
+            className={`crm-btn-primary ${isMobile ? 'w-full' : ''}`}
+            ariaLabel="Add new contact"
           >
             <Plus className="w-4 h-4 mr-2" />
             Add New Contact
-          </Button>
+          </AccessibleButton>
         </div>
       </div>
 
-      <Card className="border-none shadow-lg">
-        <CardContent className="p-4">
+      {/* Professional CRM Toolbar */}
+      <div className="crm-toolbar">
+        <div className="crm-toolbar-left">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <Input
               placeholder="Search contacts by name, email, or job title..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              onChange={(e) => handleSearch(e.target.value)}
+              className="crm-input pl-10 w-80"
             />
           </div>
-        </CardContent>
-      </Card>
+          <Select value={filterAccount} onValueChange={(value) => handleFilterChange('account', value)}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Filter by Account" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Accounts</SelectItem>
+              {accounts.map((account) => (
+                <SelectItem key={account.id} value={account.id}>
+                  {account.company_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={filterOwner} onValueChange={(value) => handleFilterChange('owner', value)}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Filter by Owner" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Owners</SelectItem>
+              {users.map((user) => (
+                <SelectItem key={user.id} value={user.id}>
+                  {user.full_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={clearFilters}
+            className="ml-2"
+          >
+            <Filter className="w-4 h-4 mr-2" />
+            Clear Filters
+          </Button>
+        </div>
+        <div className="crm-toolbar-right">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleSortChange('first_name')}
+          >
+            Name
+            {sortBy === 'first_name' && (
+              sortOrder === 'asc' ? <SortAsc className="w-4 h-4 ml-1" /> : <SortDesc className="w-4 h-4 ml-1" />
+            )}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleSortChange('created_date')}
+          >
+            Date
+            {sortBy === 'created_date' && (
+              sortOrder === 'asc' ? <SortAsc className="w-4 h-4 ml-1" /> : <SortDesc className="w-4 h-4 ml-1" />
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* Analytics Section */}
+      {showAnalytics && analytics && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Total Contacts</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-purple-600">{analytics.totalContacts}</div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Email Coverage</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">{analytics.engagementMetrics.emailCoverage}%</div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Phone Coverage</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-600">{analytics.engagementMetrics.phoneCoverage}%</div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Account Association</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-orange-600">{analytics.engagementMetrics.accountAssociation}%</div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <BulkOperations
         entityName="Contact"
@@ -347,17 +617,30 @@ export default function Contacts() {
         onRefresh={() => queryClient.invalidateQueries({ queryKey: ['contacts'] })}
       >
         {({ selectedRecords, isSelected, handleSelectRecord }) => (
-          <>
-            {view === "grid" && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredContacts.map((contact) => (
-                  <Card
-                    key={contact.id}
-                    className={`border-none shadow-lg hover:shadow-xl transition-all duration-300 group cursor-pointer ${
-                      isSelected(contact.id) ? 'ring-2 ring-purple-500' : ''
-                    }`}
-                    onClick={() => handleViewDetails(contact)}
-                  >
+          <PullToRefresh onRefresh={handleRefresh} isRefreshing={isRefreshing}>
+            {isLoading ? (
+              <div className={`grid ${isMobile ? 'grid-cols-1 gap-4' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'}`}>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <CardSkeleton key={i} />
+                ))}
+              </div>
+            ) : (
+              <>
+                {view === "grid" && (
+                  <div className={`grid ${isMobile ? 'grid-cols-1 gap-4' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'}`}>
+                    {filteredContacts.map((contact) => (
+                      <SwipeToDelete
+                        key={contact.id}
+                        onDelete={() => console.log('Delete contact:', contact.id)}
+                        onArchive={() => console.log('Archive contact:', contact.id)}
+                      >
+                        <TouchCard
+                          onLongPress={() => handleEdit(contact)}
+                          onClick={() => handleViewDetails(contact)}
+                          className={`border-none shadow-lg hover:shadow-xl transition-all duration-300 group cursor-pointer ${
+                            isSelected(contact.id) ? 'ring-2 ring-purple-500' : ''
+                          }`}
+                        >
                     <CardHeader className="pb-3">
                       <div className="flex justify-between items-start">
                         <div className="flex items-start gap-3 flex-1">
@@ -410,6 +693,17 @@ export default function Contacts() {
                             className="opacity-0 group-hover:opacity-100 transition-opacity"
                           >
                             <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(contact.id);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700"
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
                       </div>
@@ -499,20 +793,26 @@ export default function Contacts() {
                         </div>
                       )}
                     </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
+                  </TouchCard>
+                </SwipeToDelete>
+              ))}
+            </div>
+          )}
 
-            {view === "list" && (
-              <div className="space-y-2">
-                {filteredContacts.map((contact) => (
-                  <Card
-                    key={contact.id}
+          {view === "list" && (
+            <div className="space-y-2">
+              {filteredContacts.map((contact) => (
+                <SwipeToDelete
+                  key={contact.id}
+                  onDelete={() => console.log('Delete contact:', contact.id)}
+                  onArchive={() => console.log('Archive contact:', contact.id)}
+                >
+                  <TouchCard
+                    onLongPress={() => handleEdit(contact)}
+                    onClick={() => handleViewDetails(contact)}
                     className={`border-none shadow-md hover:shadow-lg transition-all cursor-pointer ${
                       isSelected(contact.id) ? 'ring-2 ring-purple-500' : ''
                     }`}
-                    onClick={() => handleViewDetails(contact)}
                   >
                     <CardContent className="p-4">
                       <div className="flex items-center gap-4">
@@ -578,109 +878,110 @@ export default function Contacts() {
                         </div>
                       </div>
                     </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
+                  </TouchCard>
+                </SwipeToDelete>
+              ))}
+            </div>
+          )}
 
-            {view === "table" && (
-              <Card className="border-none shadow-lg">
-                <CardContent className="p-0">
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="bg-gray-50 border-b">
-                        <tr>
-                          <th className="px-6 py-3 text-left">
-                            <input
-                              type="checkbox"
-                              checked={selectedRecords.length === filteredContacts.length && filteredContacts.length > 0}
-                              onChange={() => {
-                                if (selectedRecords.length === filteredContacts.length) {
-                                  selectedRecords.forEach(id => handleSelectRecord(id)); // Deselect all
-                                } else {
-                                  filteredContacts.filter(c => !isSelected(c.id)).forEach(c => handleSelectRecord(c.id)); // Select all unselected
-                                }
+          {view === "table" && (
+            <div className="crm-card">
+              <div className="overflow-x-auto">
+                <table className="crm-table">
+                  <thead className="crm-table-header">
+                    <tr>
+                      <th className="crm-table-cell">
+                        <input
+                          type="checkbox"
+                          checked={selectedRecords.length === filteredContacts.length && filteredContacts.length > 0}
+                          onChange={() => {
+                            if (selectedRecords.length === filteredContacts.length) {
+                              selectedRecords.forEach(id => handleSelectRecord(id)); // Deselect all
+                            } else {
+                              filteredContacts.filter(c => !isSelected(c.id)).forEach(c => handleSelectRecord(c.id)); // Select all unselected
+                            }
+                          }}
+                          className="w-4 h-4 text-purple-600 rounded"
+                        />
+                      </th>
+                      <th className="crm-table-cell">Serial #</th>
+                      <th className="crm-table-cell">Name</th>
+                      <th className="crm-table-cell">Account</th>
+                      <th className="crm-table-cell">Job Title</th>
+                      <th className="crm-table-cell">Email</th>
+                      <th className="crm-table-cell">Phone</th>
+                      <th className="crm-table-cell">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="crm-table-body">
+                    {filteredContacts.map((contact) => (
+                      <tr
+                        key={contact.id}
+                        className={`crm-table-row ${
+                          isSelected(contact.id) ? 'selected' : ''
+                        }`}
+                        onClick={() => handleViewDetails(contact)}
+                      >
+                        <td className="crm-table-cell">
+                          <input
+                            type="checkbox"
+                            checked={isSelected(contact.id)}
+                            onChange={() => handleSelectRecord(contact.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4 h-4 text-purple-600 rounded"
+                          />
+                        </td>
+                        <td className="crm-table-cell font-mono text-gray-600">
+                          {contact.serial_number || '-'}
+                        </td>
+                        <td className="crm-table-cell">
+                          <div className="flex items-center gap-2">
+                            <div className="crm-avatar bg-gradient-to-br from-purple-500 to-pink-500">
+                              {contact.first_name?.[0]}{contact.last_name?.[0]}
+                            </div>
+                            <p className="font-medium">{contact.first_name} {contact.last_name}</p>
+                          </div>
+                        </td>
+                        <td className="crm-table-cell font-medium">
+                          {getAccountName(contact.account_id)}
+                        </td>
+                        <td className="crm-table-cell text-gray-600">{contact.job_title || '-'}</td>
+                        <td className="crm-table-cell text-gray-600">{contact.email}</td>
+                        <td className="crm-table-cell text-gray-600">{contact.phone || '-'}</td>
+                        <td className="crm-table-cell">
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEdit(contact);
                               }}
-                              className="w-4 h-4 text-purple-600 rounded"
-                            />
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Serial #</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Account</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Job Title</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {filteredContacts.map((contact) => (
-                          <tr
-                            key={contact.id}
-                            className={`hover:bg-gray-50 cursor-pointer ${
-                              isSelected(contact.id) ? 'bg-purple-50' : ''
-                            }`}
-                            onClick={() => handleViewDetails(contact)}
-                          >
-                            <td className="px-6 py-4">
-                              <input
-                                type="checkbox"
-                                checked={isSelected(contact.id)}
-                                onChange={() => handleSelectRecord(contact.id)}
-                                onClick={(e) => e.stopPropagation()}
-                                className="w-4 h-4 text-purple-600 rounded"
-                              />
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">
-                              {contact.serial_number || '-'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold">
-                                  {contact.first_name?.[0]}{contact.last_name?.[0]}
-                                </div>
-                                <p className="font-medium">{contact.first_name} {contact.last_name}</p>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-medium">
-                              {getAccountName(contact.account_id)}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{contact.job_title || '-'}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{contact.email}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{contact.phone || '-'}</td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleEdit(contact);
-                                  }}
-                                >
-                                  <Edit className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleViewDetails(contact);
-                                  }}
-                                >
-                                  <Eye className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleViewDetails(contact);
+                              }}
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+              </>
             )}
-          </>
+          </PullToRefresh>
         )}
       </BulkOperations>
 
@@ -700,8 +1001,11 @@ export default function Contacts() {
             <DialogTitle>{editingContact ? 'Edit Contact' : 'Add New Contact'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="account_id">Account *</Label>
+            <AccessibleFormField
+              label="Account"
+              description="Select the account this contact belongs to"
+              required={true}
+            >
               <Select
                 value={formData.account_id}
                 onValueChange={(value) => setFormData({...formData, account_id: value})}
@@ -718,116 +1022,127 @@ export default function Contacts() {
                   ))}
                 </SelectContent>
               </Select>
-              {accounts.length === 0 && (
-                <p className="text-xs text-orange-600">No accounts found. Please create an account first.</p>
-              )}
-            </div>
+            </AccessibleFormField>
+            {accounts.length === 0 && (
+              <p className="text-xs text-orange-600" role="alert">No accounts found. Please create an account first.</p>
+            )}
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="first_name">First Name *</Label>
+            <div className={`grid grid-cols-2 gap-4 ${isMobile ? 'grid-cols-1' : ''}`}>
+              <AccessibleFormField
+                label="First Name"
+                required={true}
+              >
                 <Input
-                  id="first_name"
                   value={formData.first_name}
                   onChange={(e) => setFormData({...formData, first_name: e.target.value})}
-                  required
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="last_name">Last Name *</Label>
+              </AccessibleFormField>
+              <AccessibleFormField
+                label="Last Name"
+                required={true}
+              >
                 <Input
-                  id="last_name"
                   value={formData.last_name}
                   onChange={(e) => setFormData({...formData, last_name: e.target.value})}
-                  required
                 />
-              </div>
+              </AccessibleFormField>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="email">Email *</Label>
+            <AccessibleFormField
+              label="Email"
+              description="Primary email address for this contact"
+              required={true}
+            >
               <Input
-                id="email"
                 type="email"
                 value={formData.email}
                 onChange={(e) => setFormData({...formData, email: e.target.value})}
-                required
               />
-            </div>
+            </AccessibleFormField>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
+            <div className={`grid grid-cols-2 gap-4 ${isMobile ? 'grid-cols-1' : ''}`}>
+              <AccessibleFormField
+                label="Phone"
+                description="Primary phone number"
+              >
                 <Input
-                  id="phone"
                   value={formData.phone}
                   onChange={(e) => setFormData({...formData, phone: e.target.value})}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="mobile">Mobile</Label>
+              </AccessibleFormField>
+              <AccessibleFormField
+                label="Mobile"
+                description="Mobile phone number"
+              >
                 <Input
-                  id="mobile"
                   value={formData.mobile}
                   onChange={(e) => setFormData({...formData, mobile: e.target.value})}
                 />
-              </div>
+              </AccessibleFormField>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="job_title">Job Title</Label>
+            <div className={`grid grid-cols-2 gap-4 ${isMobile ? 'grid-cols-1' : ''}`}>
+              <AccessibleFormField
+                label="Job Title"
+                description="Contact's position or role"
+              >
                 <Input
-                  id="job_title"
                   value={formData.job_title}
                   onChange={(e) => setFormData({...formData, job_title: e.target.value})}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="department">Department</Label>
+              </AccessibleFormField>
+              <AccessibleFormField
+                label="Department"
+                description="Department or division"
+              >
                 <Input
-                  id="department"
                   value={formData.department}
                   onChange={(e) => setFormData({...formData, department: e.target.value})}
                 />
-              </div>
+              </AccessibleFormField>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="linkedin_url">LinkedIn URL</Label>
+            <AccessibleFormField
+              label="LinkedIn URL"
+              description="Professional LinkedIn profile URL"
+            >
               <Input
-                id="linkedin_url"
                 value={formData.linkedin_url}
                 onChange={(e) => setFormData({...formData, linkedin_url: e.target.value})}
                 placeholder="https://linkedin.com/in/..."
               />
-            </div>
+            </AccessibleFormField>
 
             <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2 col-span-3">
-                <Label htmlFor="address">Address</Label>
+              <AccessibleFormField
+                label="Address"
+                description="Street address"
+                className="col-span-3"
+              >
                 <Input
-                  id="address"
                   value={formData.address}
                   onChange={(e) => setFormData({...formData, address: e.target.value})}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="city">City</Label>
+              </AccessibleFormField>
+              <AccessibleFormField
+                label="City"
+                description="City or town"
+              >
                 <Input
-                  id="city"
                   value={formData.city}
                   onChange={(e) => setFormData({...formData, city: e.target.value})}
                 />
-              </div>
-              <div className="space-y-2 col-span-2">
-                <Label htmlFor="country">Country</Label>
+              </AccessibleFormField>
+              <AccessibleFormField
+                label="Country"
+                description="Country or region"
+                className="col-span-2"
+              >
                 <Input
-                  id="country"
                   value={formData.country}
                   onChange={(e) => setFormData({...formData, country: e.target.value})}
                 />
-              </div>
+              </AccessibleFormField>
             </div>
 
             <div className="space-y-2">
@@ -870,6 +1185,8 @@ export default function Contacts() {
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+        </div>
+      )}
+    </>
   );
 }

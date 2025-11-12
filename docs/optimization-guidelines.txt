@@ -1,0 +1,21 @@
+System Optimization Updates and Usage Guidelines
+
+Summary of Changes:
+- Fixed invalid hook call and Babel parser issues in EnhancedNotifications by removing erroneous try/catch around hooks.
+- Added safe fallbacks in useRealTimeNotifications to prevent undefined actions from causing errors.
+ - Consolidated toast system to shadcn/ui implementation (src/components/ui/use-toast.jsx) and mounted a global Toaster portal.
+- Installed @mui/material, @mui/icons-material, @emotion/react, @emotion/styled to resolve missing imports used by EnhancedAIDashboard and AISystemStatus.
+- Removed custom manual chunk 'analytics' from vite.config.js to resolve a production runtime error related to initialization order.
+- Added performance instrumentation marks to Dashboard for mount and data loading timings.
+
+Usage Guidelines:
+ - Toasts: import { useToast } from '@/components/ui/use-toast' and call toast({ title, description }). Ensure <Toaster /> is mounted once (already added in App.jsx).
+- Real-time notifications: use useRealTimeNotifications from '@/hooks/useEnhancedBusinessLogic' and rely on safe fallbacks if actions are not initialized.
+- Performance monitoring: import performanceMonitor from '@/utils/performanceMonitor' to mark/measure critical paths; visit /PerformanceMonitor for an overview.
+- Chunking: avoid manual chunking for interdependent components unless verified safe; let Vite manage chunking for complex feature sets.
+- MUI Components: ensure @emotion packages remain installed; prefer consistent UI libs to avoid bundle bloat.
+
+Recommendations:
+- Gradually code-split Dashboard and analytics-heavy pages.
+- Use Suspense and lazy() for non-critical widgets.
+- Track API timing with usePerformanceMonitor or useOptimizedQuery for key endpoints.
