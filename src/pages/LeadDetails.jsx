@@ -1,5 +1,6 @@
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,23 +11,23 @@ import {
   Phone,
   Building2,
   CheckSquare,
-  Globe
+  Globe,
+  MapPin
 } from "lucide-react";
-import { createPageUrl } from "@/utils";
 import ActivityTimeline from "../components/ActivityTimeline";
 import QuickActions from "../components/QuickActions";
 import AIInsights from "../components/AIInsights";
 import { PageSkeleton } from "@/components/ui/loading-states";
 
 export default function LeadDetails() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const leadId = urlParams.get('id');
+  const { id: leadId } = useParams();
+  const navigate = useNavigate();
 
   const { data: lead, isLoading: leadLoading } = useQuery({
     queryKey: ['lead', leadId],
     queryFn: async () => {
-      const leads = await base44.entities.Lead.list();
-      return leads.find(l => l.id === leadId);
+      if (!leadId) return null;
+      return await base44.entities.Lead.get(leadId);
     },
     enabled: !!leadId,
   });
@@ -78,14 +79,6 @@ export default function LeadDetails() {
     queryFn: () => base44.entities.Activity.list(),
   });
 
-  const statusColors = {
-    'New': 'bg-indigo-100 text-indigo-700 border-indigo-200',
-    'Contacted': 'bg-purple-100 text-purple-700 border-purple-200',
-    'Qualified': 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    'Unqualified': 'bg-gray-100 text-gray-700 border-gray-200',
-    'Converted': 'bg-amber-100 text-amber-700 border-amber-200',
-  };
-
   const isLoading = leadLoading || activitiesLoading || communicationsLoading || tasksLoading || documentsLoading;
 
   if (isLoading) {
@@ -108,7 +101,7 @@ export default function LeadDetails() {
           <Button
             variant="outline"
             size="icon"
-            onClick={() => window.location.href = createPageUrl('Leads')}
+            onClick={() => navigate('/leads')}
           >
             <ArrowLeft className="w-4 h-4" />
           </Button>
@@ -116,7 +109,7 @@ export default function LeadDetails() {
             <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
               {lead.first_name} {lead.last_name}
             </h1>
-            <p className="text-gray-600">{lead.company} • {lead.job_title}</p>
+            <p className="text-gray-600">{lead.account_name || lead.company || 'No account name'}</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -144,28 +137,10 @@ export default function LeadDetails() {
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-6">
               <div>
-                <p className="text-sm text-gray-500 mb-1">Status</p>
-                <Badge className={`${statusColors[lead.status]} border`}>
-                  {lead.status}
-                </Badge>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500 mb-1">Lead Score</p>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-gradient-to-r from-indigo-500 to-purple-500 h-2 rounded-full"
-                      style={{ width: `${lead.lead_score || 0}%` }}
-                    />
-                  </div>
-                  <span className="text-sm font-bold">{lead.lead_score || 0}/100</span>
-                </div>
-              </div>
-              <div>
                 <p className="text-sm text-gray-500 mb-1">Email</p>
                 <p className="font-medium flex items-center gap-2">
                   <Mail className="w-4 h-4 text-gray-400" />
-                  {lead.email}
+                  {lead.email || '-'}
                 </p>
               </div>
               <div>
@@ -176,30 +151,26 @@ export default function LeadDetails() {
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-500 mb-1">Company</p>
+                <p className="text-sm text-gray-500 mb-1">Account Name</p>
                 <p className="font-medium flex items-center gap-2">
                   <Building2 className="w-4 h-4 text-gray-400" />
-                  {lead.company || '-'}
+                  {lead.account_name || lead.company || '-'}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-500 mb-1">Lead Source</p>
-                <p className="font-medium">{lead.lead_source || '-'}</p>
+                <p className="text-sm text-gray-500 mb-1">Shipping Street</p>
+                <p className="font-medium flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-gray-400" />
+                  {lead.shipping_street || lead.address || lead.shipping_address || '-'}
+                </p>
               </div>
-              {lead.website && (
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">Website</p>
-                  <a
-                    href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-medium text-blue-600 hover:text-blue-700 flex items-center gap-2"
-                  >
-                    <Globe className="w-4 h-4" />
-                    Visit Website
-                  </a>
-                </div>
-              )}
+              <div>
+                <p className="text-sm text-gray-500 mb-1">Billing City</p>
+                <p className="font-medium flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-gray-400" />
+                  {lead.billing_city || lead.city || '-'}
+                </p>
+              </div>
               {lead.serial_number && (
                 <div>
                   <p className="text-sm text-gray-500 mb-1">Serial Number</p>

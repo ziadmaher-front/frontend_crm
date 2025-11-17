@@ -60,13 +60,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { useTheme } from "@/hooks/useTheme";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { MobileBottomNavigation, MobileHeader } from "@/components/MobileNavigation";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { SkipToContent, FocusTrap, useKeyboardNavigation } from "@/components/AccessibilityEnhancements";
 import GlobalSearch from "@/components/GlobalSearch";
-import NotificationsCenter from "@/components/NotificationsCenter";
 import CommandPalette from "@/components/CommandPalette";
 import AIAssistant from "@/components/AIAssistant";
 
@@ -494,6 +494,7 @@ const PAGE_TITLES = {
 
 export default function Layout({ children }) {
   const location = useLocation();
+  const { isDark } = useTheme();
   const [user, setUser] = React.useState(null);
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [commandOpen, setCommandOpen] = React.useState(false);
@@ -563,22 +564,22 @@ export default function Layout({ children }) {
       <SidebarProvider>
         <div className="min-h-screen flex w-full bg-gray-50">
           {/* Desktop Sidebar */}
-          <Sidebar className={`border-none shadow-2xl bg-gradient-to-b from-slate-900 to-slate-950 ${isMobile ? 'hidden' : ''}`}>
-            <SidebarHeader className="border-b border-white/5 p-6">
+          <Sidebar className={`border-none shadow-2xl ${isDark ? 'bg-black text-white' : 'bg-white text-black'} ${isMobile ? 'hidden' : ''}`}>
+            <SidebarHeader className={`border-b ${isDark ? 'border-white/5' : 'border-gray-200'} p-6`}>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
                   <TrendingUp className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h2 className="font-bold text-white text-lg tracking-tight">SalesPro</h2>
-                  <p className="text-xs text-gray-400">Enterprise CRM</p>
+                  <h2 className={`font-bold text-lg tracking-tight ${isDark ? 'text-white' : 'text-black'}`}>SalesPro</h2>
+                  <p className={`text-xs ${isDark ? 'text-white/70' : 'text-gray-600'}`}>Enterprise CRM</p>
                 </div>
               </div>
             </SidebarHeader>
           
           <SidebarContent className="p-3">
             <SidebarGroup>
-              <SidebarGroupLabel className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">
+              <SidebarGroupLabel className={`text-xs font-semibold uppercase tracking-wider px-3 py-3 ${isDark ? 'text-white' : 'text-black'}`}>
                 Main Menu
               </SidebarGroupLabel>
               <SidebarGroupContent>
@@ -592,7 +593,7 @@ export default function Layout({ children }) {
                           className={`transition-all duration-200 rounded-xl ${
                             isActive 
                               ? 'bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-white border border-indigo-500/30 shadow-lg shadow-indigo-500/10' 
-                              : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                              : isDark ? 'text-white hover:bg-white/10 hover:text-white' : 'text-black hover:bg-black/10 hover:text-black'
                           }`}
                         >
                           <Link 
@@ -601,7 +602,7 @@ export default function Layout({ children }) {
                             aria-label={`Navigate to ${item.title}`}
                             aria-current={isActive ? 'page' : undefined}
                           >
-                            <item.icon className={`w-5 h-5 ${isActive ? 'text-indigo-400' : 'text-gray-400'}`} />
+                            <item.icon className={`w-5 h-5 ${isActive ? 'text-indigo-400' : isDark ? 'text-white' : 'text-black'}`} />
                             <span className="font-medium">{item.title}</span>
                           </Link>
                         </SidebarMenuButton>
@@ -613,7 +614,7 @@ export default function Layout({ children }) {
             </SidebarGroup>
 
             <SidebarGroup>
-              <SidebarGroupLabel className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">
+              <SidebarGroupLabel className={`text-xs font-semibold uppercase tracking-wider px-3 py-3 ${isDark ? 'text-white' : 'text-black'}`}>
                 AI Features
               </SidebarGroupLabel>
               <SidebarGroupContent>
@@ -627,7 +628,7 @@ export default function Layout({ children }) {
                           className={`transition-all duration-200 rounded-xl ${
                             isActive 
                               ? 'bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-white border border-purple-500/30 shadow-lg shadow-purple-500/10' 
-                              : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                              : isDark ? 'text-white hover:bg-white/10 hover:text-white' : 'text-black hover:bg-black/10 hover:text-black'
                           }`}
                         >
                           <Link 
@@ -636,7 +637,7 @@ export default function Layout({ children }) {
                             aria-label={`Navigate to ${item.title}`}
                             aria-current={isActive ? 'page' : undefined}
                           >
-                            <item.icon className={`w-5 h-5 ${isActive ? 'text-purple-400' : 'text-gray-400'}`} />
+                            <item.icon className={`w-5 h-5 ${isActive ? 'text-purple-400' : isDark ? 'text-white' : 'text-black'}`} />
                             <span className="font-medium">{item.title}</span>
                           </Link>
                         </SidebarMenuButton>
@@ -648,7 +649,7 @@ export default function Layout({ children }) {
             </SidebarGroup>
 
             <SidebarGroup>
-              <SidebarGroupLabel className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">
+              <SidebarGroupLabel className={`text-xs font-semibold uppercase tracking-wider px-3 py-3 ${isDark ? 'text-white' : 'text-black'}`}>
                 Advanced CRM
               </SidebarGroupLabel>
               <SidebarGroupContent>
@@ -662,7 +663,7 @@ export default function Layout({ children }) {
                           className={`transition-all duration-200 rounded-xl ${
                             isActive 
                               ? 'bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-white border border-emerald-500/30 shadow-lg shadow-emerald-500/10' 
-                              : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                              : isDark ? 'text-white hover:bg-white/10 hover:text-white' : 'text-black hover:bg-black/10 hover:text-black'
                           }`}
                         >
                           <Link 
@@ -671,7 +672,7 @@ export default function Layout({ children }) {
                             aria-label={`Navigate to ${item.title}`}
                             aria-current={isActive ? 'page' : undefined}
                           >
-                            <item.icon className={`w-5 h-5 ${isActive ? 'text-emerald-400' : 'text-gray-400'}`} />
+                            <item.icon className={`w-5 h-5 ${isActive ? 'text-emerald-400' : isDark ? 'text-white' : 'text-black'}`} />
                             <span className="font-medium">{item.title}</span>
                           </Link>
                         </SidebarMenuButton>
@@ -683,7 +684,7 @@ export default function Layout({ children }) {
             </SidebarGroup>
 
             <SidebarGroup>
-              <SidebarGroupLabel className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">
+              <SidebarGroupLabel className={`text-xs font-semibold uppercase tracking-wider px-3 py-3 ${isDark ? 'text-white' : 'text-black'}`}>
                 Security & Admin
               </SidebarGroupLabel>
               <SidebarGroupContent>
@@ -697,7 +698,7 @@ export default function Layout({ children }) {
                           className={`transition-all duration-200 rounded-xl ${
                             isActive 
                               ? 'bg-gradient-to-r from-red-500/20 to-orange-500/20 text-white border border-red-500/30 shadow-lg shadow-red-500/10' 
-                              : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                              : isDark ? 'text-white hover:bg-white/10 hover:text-white' : 'text-black hover:bg-black/10 hover:text-black'
                           }`}
                         >
                           <Link 
@@ -706,7 +707,7 @@ export default function Layout({ children }) {
                             aria-label={`Navigate to ${item.title}`}
                             aria-current={isActive ? 'page' : undefined}
                           >
-                            <item.icon className={`w-5 h-5 ${isActive ? 'text-red-400' : 'text-gray-400'}`} />
+                            <item.icon className={`w-5 h-5 ${isActive ? 'text-red-400' : isDark ? 'text-white' : 'text-black'}`} />
                             <span className="font-medium">{item.title}</span>
                           </Link>
                         </SidebarMenuButton>
@@ -718,7 +719,7 @@ export default function Layout({ children }) {
             </SidebarGroup>
 
             <SidebarGroup>
-              <SidebarGroupLabel className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">
+              <SidebarGroupLabel className={`text-xs font-semibold uppercase tracking-wider px-3 py-3 ${isDark ? 'text-white' : 'text-black'}`}>
                 Development & Testing
               </SidebarGroupLabel>
               <SidebarGroupContent>
@@ -732,7 +733,7 @@ export default function Layout({ children }) {
                           className={`transition-all duration-200 rounded-xl ${
                             isActive 
                               ? 'bg-gradient-to-r from-blue-500/20 to-cyan-500/20 text-white border border-blue-500/30 shadow-lg shadow-blue-500/10' 
-                              : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                              : isDark ? 'text-white hover:bg-white/10 hover:text-white' : 'text-black hover:bg-black/10 hover:text-black'
                           }`}
                         >
                           <Link 
@@ -741,7 +742,7 @@ export default function Layout({ children }) {
                             aria-label={`Navigate to ${item.title}`}
                             aria-current={isActive ? 'page' : undefined}
                           >
-                            <item.icon className={`w-5 h-5 ${isActive ? 'text-blue-400' : 'text-gray-400'}`} />
+                            <item.icon className={`w-5 h-5 ${isActive ? 'text-blue-400' : isDark ? 'text-white' : 'text-black'}`} />
                             <span className="font-medium">{item.title}</span>
                           </Link>
                         </SidebarMenuButton>
@@ -753,7 +754,7 @@ export default function Layout({ children }) {
             </SidebarGroup>
 
             <SidebarGroup>
-              <SidebarGroupLabel className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">
+              <SidebarGroupLabel className={`text-xs font-semibold uppercase tracking-wider px-3 py-3 ${isDark ? 'text-white' : 'text-black'}`}>
                 Tools & Utilities
               </SidebarGroupLabel>
               <SidebarGroupContent>
@@ -767,7 +768,7 @@ export default function Layout({ children }) {
                           className={`transition-all duration-200 rounded-xl ${
                             isActive 
                               ? 'bg-gradient-to-r from-yellow-500/20 to-amber-500/20 text-white border border-yellow-500/30 shadow-lg shadow-yellow-500/10' 
-                              : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                              : isDark ? 'text-white hover:bg-white/10 hover:text-white' : 'text-black hover:bg-black/10 hover:text-black'
                           }`}
                         >
                           <Link 
@@ -776,7 +777,7 @@ export default function Layout({ children }) {
                             aria-label={`Navigate to ${item.title}`}
                             aria-current={isActive ? 'page' : undefined}
                           >
-                            <item.icon className={`w-5 h-5 ${isActive ? 'text-yellow-400' : 'text-gray-400'}`} />
+                            <item.icon className={`w-5 h-5 ${isActive ? 'text-yellow-400' : isDark ? 'text-white' : 'text-black'}`} />
                             <span className="font-medium">{item.title}</span>
                           </Link>
                         </SidebarMenuButton>
@@ -788,11 +789,11 @@ export default function Layout({ children }) {
             </SidebarGroup>
           </SidebarContent>
 
-          <SidebarFooter className="border-t border-white/5 p-4">
+          <SidebarFooter className={`border-t ${isDark ? 'border-white/10' : 'border-gray-200'} p-4`}>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button 
-                  className="flex items-center justify-between bg-white/5 rounded-xl p-3 hover:bg-white/10 transition-all w-full"
+                  className={`flex items-center justify-between rounded-xl p-3 transition-all w-full ${isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`}
                   aria-label="User menu"
                   aria-expanded="false"
                 >
@@ -811,35 +812,35 @@ export default function Layout({ children }) {
                       </div>
                     )}
                     <div className="flex-1 min-w-0 text-left">
-                      <p className="font-medium text-white text-sm truncate">
+                      <p className={`font-medium text-sm truncate ${isDark ? 'text-white' : 'text-black'}`}>
                         {user?.full_name || 'User'}
                       </p>
-                      <p className="text-xs text-gray-400 truncate">{user?.job_title || user?.email || ''}</p>
+                      <p className={`text-xs truncate ${isDark ? 'text-white/70' : 'text-gray-600'}`}>{user?.job_title || user?.email || ''}</p>
                     </div>
                   </div>
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56" align="end">
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>
+              <DropdownMenuContent className={`w-56 ${isDark ? 'bg-black border-white/10' : 'bg-white border-gray-200'}`} align="end">
+                <DropdownMenuLabel className={isDark ? 'text-white' : 'text-black'}>My Account</DropdownMenuLabel>
+                <DropdownMenuSeparator className={isDark ? 'bg-white/10' : 'bg-gray-200'} />
+                <DropdownMenuItem className={isDark ? 'text-white hover:bg-white/10 focus:bg-white/10' : 'text-black hover:bg-black/10 focus:bg-black/10'}>
                   <UserIcon className="w-4 h-4 mr-2" />
-                  <Link to={createPageUrl("Profile")}>Profile</Link>
+                  <Link to={createPageUrl("Profile")} className={isDark ? 'text-white' : 'text-black'}>Profile</Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem className={isDark ? 'text-white hover:bg-white/10 focus:bg-white/10' : 'text-black hover:bg-black/10 focus:bg-black/10'}>
                   <Settings className="w-4 h-4 mr-2" />
-                  <Link to={createPageUrl("Settings")}>Settings</Link>
+                  <Link to={createPageUrl("Settings")} className={isDark ? 'text-white' : 'text-black'}>Settings</Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem className={isDark ? 'text-white hover:bg-white/10 focus:bg-white/10' : 'text-black hover:bg-black/10 focus:bg-black/10'}>
                   <BarChart3 className="w-4 h-4 mr-2" />
-                  <Link to={createPageUrl("Reports")}>Reports</Link>
+                  <Link to={createPageUrl("Reports")} className={isDark ? 'text-white' : 'text-black'}>Reports</Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem className="bg-gradient-to-r from-indigo-50 to-purple-50">
-                  <Settings className="w-4 h-4 mr-2 text-indigo-600" />
-                  <Link to={createPageUrl("Integrations")} className="text-indigo-700 font-medium">Integrations</Link>
+                <DropdownMenuItem className={isDark ? 'bg-white/10 text-white hover:bg-white/20 focus:bg-white/20' : 'bg-black/10 text-black hover:bg-black/20 focus:bg-black/20'}>
+                  <Settings className="w-4 h-4 mr-2" />
+                  <Link to={createPageUrl("Integrations")} className={`${isDark ? 'text-white' : 'text-black'} font-medium`}>Integrations</Link>
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout} className="text-red-600">
+                <DropdownMenuSeparator className={isDark ? 'bg-white/10' : 'bg-gray-200'} />
+                <DropdownMenuItem onClick={handleLogout} className={isDark ? 'text-red-400 hover:bg-red-500/20 focus:bg-red-500/20' : 'text-red-600 hover:bg-red-50 focus:bg-red-50'}>
                   <LogOut className="w-4 h-4 mr-2" />
                   Logout
                 </DropdownMenuItem>
@@ -931,8 +932,6 @@ export default function Layout({ children }) {
                   </kbd>
                 </Button>
 
-                <NotificationCenter />
-                
                 <ThemeToggle />
                 
                 {user?.profile_photo_url ? (
@@ -961,6 +960,13 @@ export default function Layout({ children }) {
             {children}
           </div>
         </main>
+
+        {/* Notifications Icon - Fixed at bottom right */}
+        <div className="fixed bottom-6 right-6 z-50">
+          <div className="relative">
+            <NotificationCenter />
+          </div>
+        </div>
 
         {/* Mobile Bottom Navigation */}
         {isMobile && (

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuthStore } from "@/stores";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,8 +24,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 
 export default function Profile() {
-  const [user, setUser] = useState(null);
+  const { user: storeUser } = useAuthStore();
+  const [user, setUser] = useState(storeUser || null);
   const [uploading, setUploading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
     full_name: "",
     email: "",
@@ -45,26 +48,56 @@ export default function Profile() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    base44.auth.me().then(userData => {
-      setUser(userData);
+    // Initialize with store user if available
+    if (storeUser) {
+      setUser(storeUser);
       setFormData({
-        full_name: userData.full_name || "",
-        email: userData.email || "",
-        phone: userData.phone || "",
-        mobile: userData.mobile || "",
-        job_title: userData.job_title || "",
-        department: userData.department || "",
-        bio: userData.bio || "",
-        address: userData.address || "",
-        city: userData.city || "",
-        country: userData.country || "",
-        territory: userData.territory || "",
-        default_currency: userData.default_currency || "USD",
-        timezone: userData.timezone || "UTC",
-        language: userData.language || "en",
+        full_name: storeUser.full_name || storeUser.name || "",
+        email: storeUser.email || "",
+        phone: storeUser.phone || "",
+        mobile: storeUser.mobile || "",
+        job_title: storeUser.job_title || storeUser.role || "",
+        department: storeUser.department || "",
+        bio: storeUser.bio || "",
+        address: storeUser.address || "",
+        city: storeUser.city || "",
+        country: storeUser.country || "",
+        territory: storeUser.territory || "",
+        default_currency: storeUser.default_currency || "USD",
+        timezone: storeUser.timezone || "UTC",
+        language: storeUser.language || "en",
       });
-    });
-  }, []);
+      setLoading(false);
+    }
+
+    // Fetch fresh data from backend
+    base44.auth.me()
+      .then(userData => {
+        console.log('Profile: Fetched user data from backend:', userData);
+        setUser(userData);
+        setFormData({
+          full_name: userData.full_name || userData.name || "",
+          email: userData.email || "",
+          phone: userData.phone || "",
+          mobile: userData.mobile || "",
+          job_title: userData.job_title || userData.role || "",
+          department: userData.department || "",
+          bio: userData.bio || "",
+          address: userData.address || "",
+          city: userData.city || "",
+          country: userData.country || "",
+          territory: userData.territory || "",
+          default_currency: userData.default_currency || "USD",
+          timezone: userData.timezone || "UTC",
+          language: userData.language || "en",
+        });
+        setLoading(false);
+      })
+      .catch(error => {
+        console.error('Profile: Error fetching user data:', error);
+        setLoading(false);
+      });
+  }, [storeUser]);
 
   const { data: organizations = [] } = useQuery({
     queryKey: ['organizations'],

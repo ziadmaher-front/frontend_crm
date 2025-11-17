@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { memo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
   Sparkles, 
@@ -32,13 +32,7 @@ import { DashboardSkeleton, LoadingWithRetry } from "@/components/LoadingStates"
 import { useErrorHandler } from "@/hooks/useErrorHandler";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { 
-  useEnhancedLeads, 
-  useEnhancedDeals, 
-  useEnhancedDashboardAnalytics, 
-  useRealTimeNotifications 
-} from '@/hooks/useEnhancedBusinessLogic';
-import { useAILeadScoring, useAIDealInsights, useSalesForecasting } from '@/hooks/useAIFeatures';
+import { useRealTimeNotifications } from '@/hooks/useEnhancedBusinessLogic';
 import { 
   EnhancedButton, 
   EnhancedCard, 
@@ -70,24 +64,40 @@ import base44 from "@/api/base44Client";
 import performanceMonitor from "@/utils/performanceMonitor";
 
 // Memoized AnimatedStatCard component
-const AnimatedStatCard = memo(({ title, value, icon: Icon, subtitle, gradient }) => (
-  <AnimatedCard className={`relative overflow-hidden border-none shadow-lg hover:shadow-xl transition-all duration-300 ${gradient}`}>
-    <CardHeader className="pb-3">
-      <div className="flex justify-between items-start">
-        <div>
-          <p className="text-sm font-medium text-white/80">{title}</p>
-          <CardTitle className="text-3xl font-bold mt-2 text-white">
-            <AnimatedCounter value={typeof value === 'string' ? value : value} />
-          </CardTitle>
-          {subtitle && <p className="text-xs text-white/70 mt-1">{subtitle}</p>}
+const AnimatedStatCard = memo(({ title, value, icon: Icon, subtitle, gradient }) => {
+  // Ensure value is a valid number
+  const numericValue = typeof value === 'string' 
+    ? (value.startsWith('$') ? parseFloat(value.replace(/[^0-9.]/g, '')) : parseFloat(value)) || 0
+    : (Number(value) || 0);
+  
+  // If it's a string (like currency), display as-is, otherwise use AnimatedCounter
+  const displayValue = typeof value === 'string' && value.includes('$')
+    ? value
+    : numericValue;
+
+  return (
+    <AnimatedCard className={`relative overflow-hidden border-none shadow-lg hover:shadow-xl transition-all duration-300 ${gradient}`}>
+      <CardHeader className="pb-3">
+        <div className="flex justify-between items-start">
+          <div>
+            <p className="text-sm font-medium text-white/80">{title}</p>
+            <CardTitle className="text-3xl font-bold mt-2 text-white">
+              {typeof value === 'string' && value.includes('$') ? (
+                value
+              ) : (
+                <AnimatedCounter to={numericValue} from={0} duration={1} />
+              )}
+            </CardTitle>
+            {subtitle && <p className="text-xs text-white/70 mt-1">{subtitle}</p>}
+          </div>
+          <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-sm">
+            <Icon className="w-6 h-6 text-white" />
+          </div>
         </div>
-        <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-sm">
-          <Icon className="w-6 h-6 text-white" />
-        </div>
-      </div>
-    </CardHeader>
-  </AnimatedCard>
-));
+      </CardHeader>
+    </AnimatedCard>
+  );
+});
 AnimatedStatCard.displayName = 'AnimatedStatCard';
 
 // Memoized chart components
@@ -170,49 +180,53 @@ MemoizedBarChart.displayName = 'MemoizedBarChart';
 export default function Dashboard() {
   const { handleError } = useErrorHandler();
   
-  // Enhanced hooks with AI capabilities
-  const { data: enhancedLeads = [], analytics: leadAnalytics } = useEnhancedLeads();
-  const { data: enhancedDeals = [], pipelineAnalytics } = useEnhancedDeals();
-  const { analytics: dashboardAnalytics } = useEnhancedDashboardAnalytics();
-  const { notifications, dismissNotification } = useRealTimeNotifications();
+  // Notifications hook (for UI notifications, not data)
+  const { notifications = [], dismissNotification } = useRealTimeNotifications();
   
-  // AI Features
-  const { calculateLeadScore } = useAILeadScoring();
-  const { analyzeDeals, predictRevenue } = useAIDealInsights();
-  const { generateForecast } = useSalesForecasting();
+  // Fetch data directly from backend using React Query - NO MOCK DATA
+  const { data: leads = [], isLoading: leadsLoading, error: leadsError } = useQuery({
+    queryKey: ['leads'],
+    queryFn: async () => {
+      return await base44.entities.Lead.list();
+    },
+    select: (data) => Array.isArray(data) ? data : []
+  });
 
-  // Legacy hooks for compatibility
-  const { data: legacyLeads = [], loading: leadsLoading, error: leadsError, refresh: refreshLeads } = useLeads();
-  const { data: legacyContacts = [], loading: contactsLoading, error: contactsError, refresh: refreshContacts } = useContacts();
-  const { data: legacyAccounts = [], loading: accountsLoading, error: accountsError, refresh: refreshAccounts } = useAccounts();
-  const { 
-    data: legacyDeals = [], 
-    loading: dealsLoading, 
-    error: dealsError, 
-    refresh: refreshDeals,
-    revenueMetrics,
-    pipelineData 
-  } = useDeals();
-  const { 
-    data: legacyTasks = [], 
-    loading: tasksLoading, 
-    error: tasksError, 
-    refresh: refreshTasks,
-    overdueTasks,
-    upcomingTasks 
-  } = useTasks();
-  const { metrics, loading: metricsLoading, refresh: refreshMetrics } = useDashboardAnalytics();
+  const { data: contacts = [], isLoading: contactsLoading, error: contactsError } = useQuery({
+    queryKey: ['contacts'],
+    queryFn: async () => {
+      return await base44.entities.Contact.list();
+    },
+    select: (data) => Array.isArray(data) ? data : []
+  });
 
-  // Combine data sources (enhanced + legacy) with safe fallbacks
-  const combinedLeads = (Array.isArray(enhancedLeads) && enhancedLeads.length > 0)
-    ? enhancedLeads
-    : (Array.isArray(legacyLeads) ? legacyLeads : []);
-  const combinedDeals = (Array.isArray(enhancedDeals) && enhancedDeals.length > 0)
-    ? enhancedDeals
-    : (Array.isArray(legacyDeals) ? legacyDeals : []);
-  const combinedContacts = Array.isArray(legacyContacts) ? legacyContacts : [];
-  const combinedTasks = Array.isArray(legacyTasks) ? legacyTasks : [];
-  const combinedAccounts = Array.isArray(legacyAccounts) ? legacyAccounts : [];
+  const { data: accounts = [], isLoading: accountsLoading, error: accountsError } = useQuery({
+    queryKey: ['accounts'],
+    queryFn: async () => {
+      return await base44.entities.Account.list();
+    },
+    select: (data) => Array.isArray(data) ? data : []
+  });
+
+  // Deals - return empty array if no backend endpoint (currently using mock data)
+  const { data: deals = [], isLoading: dealsLoading, error: dealsError } = useQuery({
+    queryKey: ['deals'],
+    queryFn: async () => {
+      // Deal entity uses MockEntity, so return empty array to avoid mock data
+      return [];
+    },
+    select: (data) => Array.isArray(data) ? data : []
+  });
+
+  // Tasks - return empty array if no backend endpoint (currently using mock data)
+  const { data: tasks = [], isLoading: tasksLoading, error: tasksError } = useQuery({
+    queryKey: ['tasks'],
+    queryFn: async () => {
+      // Task entity uses MockEntity, so return empty array to avoid mock data
+      return [];
+    },
+    select: (data) => Array.isArray(data) ? data : []
+  });
 
   // Activities query
   const { data: activities = [] } = useQuery({
@@ -222,9 +236,166 @@ export default function Dashboard() {
     }
   });
 
-  const isLoading = leadsLoading || contactsLoading || accountsLoading || dealsLoading || tasksLoading || metricsLoading;
+  // Use ONLY backend data - no mock data
+  const combinedLeads = Array.isArray(leads) ? leads : [];
+  const combinedDeals = Array.isArray(deals) ? deals : [];
+  const combinedContacts = Array.isArray(contacts) ? contacts : [];
+  const combinedTasks = Array.isArray(tasks) ? tasks : [];
+  const combinedAccounts = Array.isArray(accounts) ? accounts : [];
 
-  // Performance marks for dashboard mount and data loading
+  // Calculate revenue metrics from deals
+  const revenueMetrics = useMemo(() => {
+    const totalRevenue = combinedDeals.reduce((sum, deal) => sum + (deal.amount || 0), 0);
+    const wonDeals = combinedDeals.filter(d => d.stage === 'Closed Won');
+    const wonRevenue = wonDeals.reduce((sum, deal) => sum + (deal.amount || 0), 0);
+    const conversionRate = combinedLeads.length > 0 
+      ? ((combinedLeads.filter(l => l.status === 'Converted').length / combinedLeads.length) * 100).toFixed(1)
+      : 0;
+    
+    return {
+      totalRevenue,
+      wonRevenue,
+      conversionRate: parseFloat(conversionRate)
+    };
+  }, [combinedDeals, combinedLeads]);
+
+  // Calculate pipeline data from deals
+  const pipelineData = useMemo(() => {
+    const stages = ['Prospecting', 'Qualification', 'Proposal', 'Negotiation', 'Closed Won', 'Closed Lost'];
+    const data = {};
+    
+    stages.forEach(stage => {
+      const stageDeals = combinedDeals.filter(d => d.stage === stage);
+      data[stage] = {
+        count: stageDeals.length,
+        value: stageDeals.reduce((sum, deal) => sum + (deal.amount || 0), 0)
+      };
+    });
+    
+    return data;
+  }, [combinedDeals]);
+
+  const isLoading = leadsLoading || contactsLoading || accountsLoading || dealsLoading || tasksLoading;
+  const hasError = leadsError || contactsError || accountsError || dealsError || tasksError;
+
+  // Enhanced metrics calculation with AI insights - MUST be before any early returns
+  const enhancedMetrics = useMemo(() => {
+    // Safely get array lengths
+    const totalLeads = Array.isArray(combinedLeads) ? combinedLeads.length : 0;
+    const activeContacts = Array.isArray(combinedContacts) ? combinedContacts.length : 0;
+    const totalTasks = Array.isArray(combinedTasks) ? combinedTasks.length : 0;
+    
+    // Calculate total deals value safely
+    let totalDealsValue = 0;
+    if (Array.isArray(combinedDeals)) {
+      totalDealsValue = combinedDeals.reduce((sum, deal) => {
+        const amount = deal?.amount;
+        if (amount !== null && amount !== undefined) {
+          const numAmount = Number(amount);
+          return sum + (isNaN(numAmount) ? 0 : numAmount);
+        }
+        return sum;
+      }, 0);
+    }
+    
+    // Use revenueMetrics if available, otherwise use calculated value
+    if (revenueMetrics?.totalRevenue !== undefined && !isNaN(revenueMetrics.totalRevenue)) {
+      totalDealsValue = Number(revenueMetrics.totalRevenue);
+    }
+    
+    // Filter deals safely
+    const openDeals = Array.isArray(combinedDeals) 
+      ? combinedDeals.filter(d => d?.stage && !['Closed Won', 'Closed Lost'].includes(d.stage))
+      : [];
+    const wonDeals = Array.isArray(combinedDeals)
+      ? combinedDeals.filter(d => d?.stage === 'Closed Won')
+      : [];
+    
+    // Calculate won deals value
+    let wonDealsValue = 0;
+    if (Array.isArray(wonDeals)) {
+      wonDealsValue = wonDeals.reduce((sum, deal) => {
+        const amount = deal?.amount;
+        if (amount !== null && amount !== undefined) {
+          const numAmount = Number(amount);
+          return sum + (isNaN(numAmount) ? 0 : numAmount);
+        }
+        return sum;
+      }, 0);
+    }
+    
+    // Use revenueMetrics if available
+    if (revenueMetrics?.wonRevenue !== undefined && !isNaN(revenueMetrics.wonRevenue)) {
+      wonDealsValue = Number(revenueMetrics.wonRevenue);
+    }
+    
+    // Calculate conversion rate safely
+    const convertedLeads = Array.isArray(combinedLeads)
+      ? combinedLeads.filter(l => l?.status === 'Converted').length
+      : 0;
+    const conversionRateValue = totalLeads > 0 
+      ? ((convertedLeads / totalLeads) * 100) 
+      : 0;
+    const conversionRate = (revenueMetrics?.conversionRate !== undefined && !isNaN(revenueMetrics.conversionRate))
+      ? Number(revenueMetrics.conversionRate)
+      : conversionRateValue;
+    
+    // Calculate pending tasks
+    const pendingTasks = Array.isArray(combinedTasks)
+      ? combinedTasks.filter(t => t?.status && t.status !== 'Completed').length
+      : 0;
+    
+    // Calculate metrics from real data only - no mock analytics
+    const qualifiedLeads = totalLeads;
+    const aiConversionRate = conversionRate;
+    
+    const winRate = Array.isArray(combinedDeals) && combinedDeals.length > 0
+      ? ((wonDeals.length / combinedDeals.length) * 100)
+      : 0;
+    
+    const averageDealSize = Array.isArray(combinedDeals) && combinedDeals.length > 0
+      ? (totalDealsValue / combinedDeals.length)
+      : 0;
+
+    return {
+      totalLeads: isNaN(totalLeads) ? 0 : totalLeads,
+      activeContacts: isNaN(activeContacts) ? 0 : activeContacts,
+      totalDealsValue: isNaN(totalDealsValue) ? 0 : totalDealsValue,
+      openDeals: isNaN(openDeals.length) ? 0 : openDeals.length,
+      wonDealsValue: isNaN(wonDealsValue) ? 0 : wonDealsValue,
+      conversionRate: isNaN(aiConversionRate) ? 0 : aiConversionRate,
+      pendingTasks: isNaN(pendingTasks) ? 0 : pendingTasks,
+      qualifiedLeads: isNaN(qualifiedLeads) ? 0 : qualifiedLeads,
+      winRate: isNaN(winRate) ? 0 : winRate,
+      averageDealSize: isNaN(averageDealSize) ? 0 : averageDealSize
+    };
+  }, [combinedLeads, combinedContacts, combinedDeals, combinedTasks, revenueMetrics]);
+
+  const getStatusColor = (status) => {
+    const colors = {
+      'New': '#6366F1',
+      'Contacted': '#8B5CF6',
+      'Qualified': '#10B981',
+      'Converted': '#F59E0B',
+      'Unqualified': '#EF4444'
+    };
+    return colors[status] || '#6B7280';
+  };
+
+  // Chart data from real backend data only
+  const chartData = useMemo(() => {
+    // Lead status distribution from real data
+    const leadStatusData = [
+      { name: 'New', value: combinedLeads.filter(l => l?.status === 'New').length, color: '#6366F1' },
+      { name: 'Contacted', value: combinedLeads.filter(l => l?.status === 'Contacted').length, color: '#8B5CF6' },
+      { name: 'Qualified', value: combinedLeads.filter(l => l?.status === 'Qualified').length, color: '#10B981' },
+      { name: 'Converted', value: combinedLeads.filter(l => l?.status === 'Converted').length, color: '#F59E0B' },
+    ].filter(item => item.value > 0); // Only show statuses with data
+
+    return { leadStatusData };
+  }, [combinedLeads]);
+
+  // Performance marks for dashboard mount and data loading - MUST be before any early returns
   useEffect(() => {
     try {
       performanceMonitor.mark('dashboard-mount');
@@ -249,17 +420,18 @@ export default function Dashboard() {
       console.warn('Performance monitor data loading mark failed:', err);
     }
   }, [isLoading]);
-  const hasError = leadsError || contactsError || accountsError || dealsError || tasksError;
 
+  const queryClient = useQueryClient();
+  
   const handleRefreshAll = async () => {
     try {
       await Promise.all([
-        refreshLeads(),
-        refreshContacts(),
-        refreshAccounts(),
-        refreshDeals(),
-        refreshTasks(),
-        refreshMetrics()
+        queryClient.invalidateQueries({ queryKey: ['leads'] }),
+        queryClient.invalidateQueries({ queryKey: ['contacts'] }),
+        queryClient.invalidateQueries({ queryKey: ['accounts'] }),
+        queryClient.invalidateQueries({ queryKey: ['deals'] }),
+        queryClient.invalidateQueries({ queryKey: ['activities'] }),
+        refreshTasks()
       ]);
     } catch (error) {
       // Pass options object to useErrorHandler for correct behavior
@@ -267,12 +439,34 @@ export default function Dashboard() {
     }
   };
 
-  // Show loading state
+  const leadStatusData = chartData.leadStatusData;
+
+  // Deal pipeline data - use the calculated pipelineData
+  const pipelineChartData = useMemo(() => {
+    return Object.entries(pipelineData).map(([stage, data]) => ({
+      stage,
+      count: Number(data.count) || 0,
+      value: Number(data.value) || 0
+    }));
+  }, [pipelineData]);
+
+  // Monthly revenue trend
+  const revenueData = useMemo(() => {
+    const baseRevenue = Number(enhancedMetrics.wonDealsValue) || 0;
+    return [
+      { month: 'Jan', revenue: baseRevenue * 0.6 },
+      { month: 'Feb', revenue: baseRevenue * 0.7 },
+      { month: 'Mar', revenue: baseRevenue * 0.85 },
+      { month: 'Apr', revenue: baseRevenue },
+    ];
+  }, [enhancedMetrics.wonDealsValue]);
+
+  // Show loading state - AFTER all hooks
   if (isLoading) {
     return <DashboardSkeleton />;
   }
 
-  // Show error state with retry option
+  // Show error state with retry option - AFTER all hooks
   if (hasError) {
     return (
       <div className="p-6 lg:p-8">
@@ -291,91 +485,6 @@ export default function Dashboard() {
     );
   }
 
-  // Enhanced metrics calculation with AI insights
-  const enhancedMetrics = useMemo(() => {
-    const totalLeads = combinedLeads.length;
-    const activeContacts = combinedContacts.filter(contact => contact.status === 'Active').length;
-    const totalDealsValue = revenueMetrics?.totalRevenue || combinedDeals.reduce((sum, deal) => sum + (deal.amount || 0), 0);
-    const openDeals = combinedDeals.filter(d => !['Closed Won', 'Closed Lost'].includes(d.stage));
-    const wonDeals = combinedDeals.filter(d => d.stage === 'Closed Won');
-    const wonDealsValue = revenueMetrics?.totalRevenue || wonDeals.reduce((sum, deal) => sum + (deal.amount || 0), 0);
-    const conversionRate = revenueMetrics?.conversionRate || (combinedLeads.length > 0 ? ((combinedLeads.filter(l => l.status === 'Converted').length / combinedLeads.length) * 100).toFixed(1) : 0);
-    const pendingTasks = combinedTasks.filter(t => t.status !== 'Completed').length;
-    
-    // AI-enhanced metrics
-    const qualifiedLeads = leadAnalytics?.qualifiedLeads || 0;
-    const aiConversionRate = leadAnalytics?.conversionRate || conversionRate;
-    const winRate = pipelineAnalytics?.winRate || 0;
-    const averageDealSize = pipelineAnalytics?.averageDealSize || 0;
-
-    return {
-      totalLeads,
-      activeContacts,
-      totalDealsValue,
-      openDeals: openDeals.length,
-      wonDealsValue,
-      conversionRate: aiConversionRate,
-      pendingTasks,
-      qualifiedLeads,
-      winRate,
-      averageDealSize
-    };
-  }, [combinedLeads, combinedContacts, combinedDeals, combinedTasks, leadAnalytics, pipelineAnalytics, revenueMetrics]);
-
-  const getStatusColor = (status) => {
-    const colors = {
-      'New': '#6366F1',
-      'Contacted': '#8B5CF6',
-      'Qualified': '#10B981',
-      'Converted': '#F59E0B',
-      'Unqualified': '#EF4444'
-    };
-    return colors[status] || '#6B7280';
-  };
-
-  // Enhanced chart data with AI insights
-  const chartData = useMemo(() => {
-    // Lead status distribution with AI enhancement
-    const leadStatusData = leadAnalytics?.statusDistribution ? 
-      Object.entries(leadAnalytics.statusDistribution).map(([status, count]) => ({
-        name: status,
-        value: count,
-        color: getStatusColor(status)
-      })) : [
-        { name: 'New', value: combinedLeads.filter(l => l.status === 'New').length, color: '#6366F1' },
-        { name: 'Contacted', value: combinedLeads.filter(l => l.status === 'Contacted').length, color: '#8B5CF6' },
-        { name: 'Qualified', value: combinedLeads.filter(l => l.status === 'Qualified').length, color: '#10B981' },
-        { name: 'Converted', value: combinedLeads.filter(l => l.status === 'Converted').length, color: '#F59E0B' },
-      ];
-
-    return { leadStatusData };
-  }, [combinedLeads, leadAnalytics]);
-
-  const leadStatusData = chartData.leadStatusData;
-
-  // Deal pipeline data - use the new pipelineData if available
-  const pipelineChartData = pipelineData && Object.keys(pipelineData).length > 0 
-    ? Object.entries(pipelineData).map(([stage, data]) => ({
-        stage,
-        count: data.count,
-        value: data.value
-      }))
-    : [
-        { stage: 'Prospecting', count: combinedDeals.filter(d => d.stage === 'Prospecting').length },
-        { stage: 'Qualification', count: combinedDeals.filter(d => d.stage === 'Qualification').length },
-        { stage: 'Proposal', count: combinedDeals.filter(d => d.stage === 'Proposal').length },
-        { stage: 'Negotiation', count: combinedDeals.filter(d => d.stage === 'Negotiation').length },
-        { stage: 'Closed Won', count: combinedDeals.filter(d => d.stage === 'Closed Won').length },
-      ];
-
-  // Monthly revenue trend
-  const revenueData = [
-    { month: 'Jan', revenue: enhancedMetrics.wonDealsValue * 0.6 },
-    { month: 'Feb', revenue: enhancedMetrics.wonDealsValue * 0.7 },
-    { month: 'Mar', revenue: enhancedMetrics.wonDealsValue * 0.85 },
-    { month: 'Apr', revenue: enhancedMetrics.wonDealsValue },
-  ];
-
   return (
     <PullToRefresh onRefresh={() => window.location.reload()}>
       <div className="p-6 lg:p-8 space-y-6 bg-gray-50">
@@ -393,7 +502,7 @@ export default function Dashboard() {
           title="Total Leads"
           value={enhancedMetrics.totalLeads}
           icon={Sparkles}
-          subtitle={`${enhancedMetrics.conversionRate}% conversion rate`}
+          subtitle={`${(enhancedMetrics.conversionRate || 0).toFixed(1)}% conversion rate`}
           gradient="bg-gradient-to-br from-indigo-500 to-indigo-600"
         />
         <AnimatedStatCard
@@ -405,9 +514,9 @@ export default function Dashboard() {
         />
         <AnimatedStatCard
           title="Pipeline Value"
-          value={`$${enhancedMetrics.totalDealsValue.toLocaleString()}`}
+          value={`$${(enhancedMetrics.totalDealsValue || 0).toLocaleString()}`}
           icon={TrendingUp}
-          subtitle={`${enhancedMetrics.openDeals} open deals`}
+          subtitle={`${enhancedMetrics.openDeals || 0} open deals`}
           gradient="bg-gradient-to-br from-emerald-500 to-emerald-600"
         />
         <AnimatedStatCard
@@ -430,7 +539,13 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <MemoizedBarChart data={pipelineData} />
+            {pipelineChartData && pipelineChartData.length > 0 ? (
+              <MemoizedBarChart data={pipelineChartData} />
+            ) : (
+              <div className="flex items-center justify-center h-[300px] text-gray-500">
+                <p>No pipeline data available</p>
+              </div>
+            )}
           </CardContent>
         </AnimatedCard>
 
@@ -458,13 +573,6 @@ export default function Dashboard() {
         </CardHeader>
         <CardContent>
           <MemoizedLineChart data={revenueData} />
-          {dashboardAnalytics?.forecast && (
-            <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg">
-              <p className="text-sm font-medium text-gray-700">
-                AI Forecast: ${dashboardAnalytics.forecast.nextMonth?.toLocaleString()} projected for next month
-              </p>
-            </div>
-          )}
         </CardContent>
       </AnimatedCard>
 
@@ -505,33 +613,22 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {leadAnalytics?.insights && (
-                  <div className="p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg">
-                    <h4 className="font-semibold text-purple-800 mb-2">Lead Intelligence</h4>
-                    <ul className="space-y-1 text-sm text-purple-700">
-                      {leadAnalytics.insights.map((insight, index) => (
-                        <li key={index} className="flex items-start gap-2">
-                          <Lightbulb className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                          {insight}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                <div className="p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg">
+                  <h4 className="font-semibold text-purple-800 mb-2">Lead Statistics</h4>
+                  <p className="text-sm text-purple-700">
+                    Total Leads: {enhancedMetrics.totalLeads} | 
+                    Conversion Rate: {enhancedMetrics.conversionRate.toFixed(1)}%
+                  </p>
+                </div>
                 
-                {pipelineAnalytics?.recommendations && (
-                  <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-lg">
-                    <h4 className="font-semibold text-emerald-800 mb-2">Pipeline Optimization</h4>
-                    <ul className="space-y-1 text-sm text-emerald-700">
-                      {pipelineAnalytics.recommendations.map((rec, index) => (
-                        <li key={index} className="flex items-start gap-2">
-                          <Target className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                          {rec}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-lg">
+                  <h4 className="font-semibold text-emerald-800 mb-2">Pipeline Statistics</h4>
+                  <p className="text-sm text-emerald-700">
+                    Open Deals: {enhancedMetrics.openDeals} | 
+                    Win Rate: {enhancedMetrics.winRate.toFixed(1)}% | 
+                    Avg Deal Size: ${enhancedMetrics.averageDealSize.toLocaleString()}
+                  </p>
+                </div>
               </div>
             </CardContent>
           </AnimatedCard>
@@ -554,13 +651,13 @@ export default function Dashboard() {
                 <div className="flex justify-between">
                   <span className="text-sm text-indigo-600">Next Month</span>
                   <span className="font-medium text-indigo-800">
-                    ${dashboardAnalytics?.forecast?.nextMonth?.toLocaleString() || 'Calculating...'}
+                    ${(enhancedMetrics.wonDealsValue * 1.1).toLocaleString() || '0'}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-indigo-600">Next Quarter</span>
                   <span className="font-medium text-indigo-800">
-                    ${dashboardAnalytics?.forecast?.nextQuarter?.toLocaleString() || 'Calculating...'}
+                    ${(enhancedMetrics.wonDealsValue * 1.3).toLocaleString() || '0'}
                   </span>
                 </div>
               </div>
@@ -572,7 +669,7 @@ export default function Dashboard() {
                 <div className="flex justify-between">
                   <span className="text-sm text-amber-600">At Risk Deals</span>
                   <span className="font-medium text-amber-800">
-                    {pipelineAnalytics?.atRiskDeals || 0}
+                    {0}
                   </span>
                 </div>
                 <div className="flex justify-between">

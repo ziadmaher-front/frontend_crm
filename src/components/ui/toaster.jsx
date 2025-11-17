@@ -9,13 +9,31 @@ import {
 } from "@/components/ui/toast";
 
 export function Toaster() {
-  const { toasts } = useToast();
+  const { toasts, dismiss } = useToast();
+
+  const handleClose = (id, onOpenChange) => {
+    if (onOpenChange) {
+      onOpenChange(false);
+    } else {
+      dismiss(id);
+    }
+  };
 
   return (
     <ToastProvider>
-      {toasts.map(function ({ id, title, description, action, ...props }) {
+      {toasts.map(function ({ id, title, description, action, onOpenChange, open, ...props }) {
+        if (open === false) return null;
+        
         return (
-          <Toast key={id} {...props}>
+          <Toast 
+            key={id} 
+            {...props} 
+            onOpenChange={(isOpen) => {
+              if (!isOpen && onOpenChange) {
+                onOpenChange(false);
+              }
+            }}
+          >
             <div className="grid gap-1">
               {title && <ToastTitle>{title}</ToastTitle>}
               {description && (
@@ -23,7 +41,13 @@ export function Toaster() {
               )}
             </div>
             {action}
-            <ToastClose />
+            <ToastClose 
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleClose(id, onOpenChange);
+              }}
+            />
           </Toast>
         );
       })}

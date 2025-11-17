@@ -15,6 +15,57 @@ export const useAuthStore = create()(
         isAuthenticated: false,
         isLoading: false,
         error: null,
+        token: null,
+
+        // Initialize - check if we have valid persisted auth
+        init: async () => {
+          const state = get();
+          const storedToken = localStorage.getItem('authToken');
+          
+          // If no user or no token, ensure we're not authenticated
+          if (!state.user || !storedToken) {
+            set((state) => {
+              state.isAuthenticated = false;
+              state.permissions = [];
+              state.user = null;
+              state.token = null;
+            });
+            // Clear invalid token if no user
+            if (!state.user && storedToken) {
+              localStorage.removeItem('authToken');
+            }
+          } else if (state.user && storedToken) {
+            // We have both user and token - restore token to state if missing
+            if (!state.token) {
+              set((state) => {
+                state.token = storedToken;
+                // Ensure authenticated state is true if we have user and token
+                if (state.user && storedToken) {
+                  state.isAuthenticated = true;
+                }
+              });
+            }
+            
+            // Only validate token with backend if user exists but endpoint might not be ready yet
+            // Don't clear auth state on validation failure - let ProtectedRoute handle it
+            // This prevents clearing valid auth state if backend is temporarily unavailable
+            try {
+              const { base44 } = await import('@/api/base44Client');
+              // Try to validate token, but don't fail if endpoint doesn't exist
+              const userData = await base44.auth.me().catch(() => null);
+              // If we get user data, update user info
+              if (userData) {
+                set((state) => {
+                  state.user = { ...state.user, ...userData };
+                });
+              }
+            } catch (error) {
+              // Don't clear auth state on validation failure - might be network issue
+              // The ProtectedRoute will handle redirect if token is truly invalid
+              console.warn('Token validation warning (not clearing auth):', error);
+            }
+          }
+        },
 
         // Actions
         login: async (credentials) => {
@@ -24,38 +75,114 @@ export const useAuthStore = create()(
           });
 
           try {
-            // Simulate API call
-            const response = await fetch('/api/auth/login', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(credentials),
-            });
-
-            if (response.ok) {
-              const userData = await response.json();
-              set((state) => {
-                state.user = userData.user;
-                state.permissions = userData.permissions;
-                state.isAuthenticated = true;
-                state.isLoading = false;
-              });
-            } else {
-              throw new Error('Login failed');
+            const { base44 } = await import('@/api/base44Client');
+            const response = await base44.auth.login(credentials);
+            
+            console.log('Login successful, response:', { ...response, token: '***' });
+            
+            // Store token for future API calls
+            if (response.token) {
+              localStorage.setItem('authToken', response.token);
             }
-          } catch (error) {
+            
+            // Ensure token is set before setting auth state
+            const authToken = response.token || localStorage.getItem('authToken');
+            
             set((state) => {
-              state.error = error.message;
+              state.user = response.user;
+              state.permissions = response.permissions || [];
+              state.isAuthenticated = true;
+              state.isLoading = false;
+              state.token = authToken;
+            });
+            
+            // Double-check token is in localStorage
+            if (authToken && !localStorage.getItem('authToken')) {
+              localStorage.setItem('authToken', authToken);
+            }
+            
+            console.log('Auth state after login:', {
+              isAuthenticated: get().isAuthenticated,
+              hasUser: !!get().user,
+              hasToken: !!get().token,
+              tokenInStorage: !!localStorage.getItem('authToken'),
+            });
+          } catch (error) {
+            console.error('Login error in store:', error);
+            set((state) => {
+              state.error = error.message || 'Login failed. Please check your credentials.';
               state.isLoading = false;
             });
+            throw error;
+          }
+        },
+
+        register: async (userData) => {
+          set((state) => {
+            state.isLoading = true;
+            state.error = null;
+          });
+
+          try {
+            const { base44 } = await import('@/api/base44Client');
+            const response = await base44.auth.register(userData);
+            
+            console.log('Registration successful, response:', { ...response, token: '***' });
+            
+            // Store token for future API calls
+            if (response.token) {
+              localStorage.setItem('authToken', response.token);
+            }
+            
+            // Ensure token is set before setting auth state
+            const authToken = response.token || localStorage.getItem('authToken');
+            
+            set((state) => {
+              state.user = response.user;
+              state.permissions = response.permissions || [];
+              state.isAuthenticated = true;
+              state.isLoading = false;
+              state.token = authToken;
+            });
+            
+            // Double-check token is in localStorage
+            if (authToken && !localStorage.getItem('authToken')) {
+              localStorage.setItem('authToken', authToken);
+            }
+            
+            console.log('Auth state after registration:', {
+              isAuthenticated: get().isAuthenticated,
+              hasUser: !!get().user,
+              hasToken: !!get().token,
+              tokenInStorage: !!localStorage.getItem('authToken'),
+            });
+          } catch (error) {
+            console.error('Registration error in store:', error);
+            set((state) => {
+              state.error = error.message || 'Registration failed. Please try again.';
+              state.isLoading = false;
+            });
+            throw error;
           }
         },
 
         logout: () => {
+          // Clear token from localStorage
+          localStorage.removeItem('authToken');
+          
+          // Call backend logout if needed
+          import('@/api/base44Client').then(({ base44 }) => {
+            base44.auth.logout().catch(err => {
+              console.warn('Logout error:', err);
+            });
+          });
+          
           set((state) => {
             state.user = null;
             state.permissions = [];
             state.isAuthenticated = false;
             state.error = null;
+            state.token = null;
           });
         },
 
@@ -76,7 +203,35 @@ export const useAuthStore = create()(
           user: state.user,
           permissions: state.permissions,
           isAuthenticated: state.isAuthenticated,
+          token: state.token,
         }),
+        // Validate rehydrated state
+        onRehydrateStorage: () => (state, error) => {
+          if (error) {
+            console.error('Error rehydrating auth store:', error);
+            return;
+          }
+          // Validate rehydrated state - ensure we have both user and token
+          if (state) {
+            const storedToken = localStorage.getItem('authToken');
+            
+            // If we have both user and token in state, ensure authenticated is true
+            if (state.user && storedToken) {
+              state.isAuthenticated = true;
+              state.token = storedToken; // Ensure token is set
+            } else if (!state.user || !storedToken) {
+              // Reset to unauthenticated if user or token is missing
+              state.isAuthenticated = false;
+              state.user = null;
+              state.permissions = [];
+              state.token = null;
+              // Clear invalid token if no user
+              if (storedToken && !state.user) {
+                localStorage.removeItem('authToken');
+              }
+            }
+          }
+        },
       }
     ),
     { name: 'AuthStore' }
@@ -279,7 +434,7 @@ export const useEntitiesStore = create()(
 );
 
 // Analytics Store
-export const useAnalyticsStore = create()(
+export const useAnalyticsStore = create()
   devtools(
     immer((set, get) => ({
       metrics: {

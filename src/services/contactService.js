@@ -31,11 +31,11 @@ class ContactService {
         contacts = this.searchContacts(contacts, searchTerm);
       }
 
-      if (filterAccount) {
-        contacts = contacts.filter(contact => contact.account_id === filterAccount);
+      if (filterAccount && filterAccount !== "all") {
+        contacts = contacts.filter(contact => contact.account_id === filterAccount || contact.account_name === filterAccount);
       }
 
-      if (filterOwner) {
+      if (filterOwner && filterOwner !== "all") {
         contacts = contacts.filter(contact => 
           contact.assigned_users?.includes(filterOwner)
         );
@@ -55,7 +55,7 @@ class ContactService {
 
       if (filterCountry) {
         contacts = contacts.filter(contact => 
-          contact.country?.toLowerCase().includes(filterCountry.toLowerCase())
+          (contact.mailing_country || contact.country)?.toLowerCase().includes(filterCountry.toLowerCase())
         );
       }
 
@@ -68,13 +68,7 @@ class ContactService {
 
   async getContactById(id) {
     try {
-      const contacts = await this.entity.list();
-      const contact = contacts.find(c => c.id === id);
-      
-      if (!contact) {
-        throw new Error('Contact not found');
-      }
-
+      const contact = await this.entity.get(id);
       return { success: true, data: contact };
     } catch (error) {
       console.error('Error fetching contact:', error);
@@ -338,23 +332,21 @@ class ContactService {
       errors.push('Last name is required');
     }
 
-    // Email validation
-    if (data.email && !this.isValidEmail(data.email)) {
+    if (!data.email?.trim()) {
+      errors.push('Email is required');
+    } else if (!this.isValidEmail(data.email)) {
       errors.push('Invalid email format');
     }
 
-    // Phone validation
-    if (data.phone && !this.isValidPhone(data.phone)) {
+    if (!data.phone?.trim()) {
+      errors.push('Phone is required');
+    } else if (!this.isValidPhone(data.phone)) {
       errors.push('Invalid phone format');
     }
 
-    if (data.mobile && !this.isValidPhone(data.mobile)) {
-      errors.push('Invalid mobile format');
-    }
-
-    // LinkedIn URL validation
-    if (data.linkedin_url && !this.isValidLinkedInUrl(data.linkedin_url)) {
-      errors.push('Invalid LinkedIn URL format');
+    // Optional phone validation
+    if (data.mobile_phone && !this.isValidPhone(data.mobile_phone)) {
+      errors.push('Invalid mobile phone format');
     }
 
     return {
@@ -364,18 +356,8 @@ class ContactService {
   }
 
   processContactData(data) {
-    return {
-      ...data,
-      first_name: data.first_name?.trim(),
-      last_name: data.last_name?.trim(),
-      email: data.email?.toLowerCase().trim(),
-      phone: this.formatPhone(data.phone),
-      mobile: this.formatPhone(data.mobile),
-      job_title: data.job_title?.trim(),
-      department: data.department?.trim(),
-      linkedin_url: this.formatLinkedInUrl(data.linkedin_url),
-      full_name: `${data.first_name?.trim()} ${data.last_name?.trim()}`.trim()
-    };
+    // The ContactEntity will handle the transformation, so we just pass the data through
+    return data;
   }
 
   groupContactsByAccount(contacts) {

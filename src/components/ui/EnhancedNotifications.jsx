@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   CheckCircle, 
@@ -16,6 +16,7 @@ import { useRealTimeNotifications } from '../../hooks/useEnhancedBusinessLogic';
 const NotificationItem = ({ notification, onDismiss, onMarkAsRead }) => {
   const [isVisible, setIsVisible] = useState(true);
   const [progress, setProgress] = useState(100);
+  const intervalRef = useRef(null);
 
   const getIcon = (type) => {
     switch (type) {
@@ -43,14 +44,30 @@ const NotificationItem = ({ notification, onDismiss, onMarkAsRead }) => {
     }
   };
 
+  const handleDismiss = useCallback(() => {
+    // Clear any running interval
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    setIsVisible(false);
+    // Call onDismiss immediately, don't wait for animation
+    if (onDismiss) {
+      onDismiss(notification.id);
+    }
+  }, [notification.id, onDismiss]);
+
   useEffect(() => {
-    if (notification.autoHide !== false) {
+    if (notification.autoHide !== false && isVisible) {
       const duration = notification.duration || 5000;
-      const interval = setInterval(() => {
+      intervalRef.current = setInterval(() => {
         setProgress((prev) => {
           const newProgress = prev - (100 / (duration / 100));
           if (newProgress <= 0) {
-            clearInterval(interval);
+            if (intervalRef.current) {
+              clearInterval(intervalRef.current);
+              intervalRef.current = null;
+            }
             handleDismiss();
             return 0;
           }
@@ -58,14 +75,14 @@ const NotificationItem = ({ notification, onDismiss, onMarkAsRead }) => {
         });
       }, 100);
 
-      return () => clearInterval(interval);
+      return () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+      };
     }
-  }, [notification]);
-
-  const handleDismiss = () => {
-    setIsVisible(false);
-    setTimeout(() => onDismiss(notification.id), 300);
-  };
+  }, [notification, isVisible, handleDismiss]);
 
   const handleClick = () => {
     if (!notification.read) {
@@ -106,9 +123,12 @@ const NotificationItem = ({ notification, onDismiss, onMarkAsRead }) => {
             <button
               onClick={(e) => {
                 e.stopPropagation();
+                e.preventDefault();
                 handleDismiss();
               }}
-              className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
+              className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors z-10"
+              type="button"
+              aria-label="Close notification"
             >
               <X className="w-4 h-4" />
             </button>
@@ -136,40 +156,54 @@ export const NotificationCenter = () => {
   const { notifications, dismissNotification, markAsRead, clearAll } = useRealTimeNotifications();
   const [isOpen, setIsOpen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const audioContextRef = useRef(null);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
   // Play notification sound
   useEffect(() => {
-    if (soundEnabled && notifications.length > 0) {
-      const lastNotification = notifications[notifications.length - 1];
-      if (!lastNotification.read && lastNotification.type !== 'info') {
-        // Create a simple beep sound
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        oscillator.frequency.value = lastNotification.type === 'error' ? 400 : 800;
-        oscillator.type = 'sine';
-        
-        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
-        
-        oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + 0.3);
-      }
-    }
+    if (!soundEnabled) return;
+    if (notifications.length === 0) return;
+    const lastNotification = notifications[notifications.length - 1];
+    if (lastNotification.read || lastNotification.type === 'info') return;
+
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+
+    if (!audioContextRef.current) return;
+    if (audioContextRef.current.state === 'suspended') return;
+
+    const oscillator = audioContextRef.current.createOscillator();
+    const gainNode = audioContextRef.current.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContextRef.current.destination);
+
+    oscillator.frequency.value = lastNotification.type === 'error' ? 400 : 800;
+    oscillator.type = 'sine';
+
+    gainNode.gain.setValueAtTime(0.1, audioContextRef.current.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContextRef.current.currentTime + 0.3);
+
+    oscillator.start(audioContextRef.current.currentTime);
+    oscillator.stop(audioContextRef.current.currentTime + 0.3);
   }, [notifications, soundEnabled]);
 
   return (
-    <div className="fixed top-4 right-4 z-50">
+    <div className="z-50">
       {/* Notification Bell */}
       <div className="relative mb-4">
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={() => {
+            setIsOpen(!isOpen);
+            const AC = window.AudioContext || window.webkitAudioContext;
+            if (AC && !audioContextRef.current) {
+              audioContextRef.current = new AC();
+            }
+            if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+              audioContextRef.current.resume();
+            }
+          }}
           className={`p-3 rounded-full shadow-lg transition-all duration-200 ${
             unreadCount > 0 
               ? 'bg-blue-600 text-white animate-pulse' 
@@ -209,7 +243,16 @@ export const NotificationCenter = () => {
                 <h3 className="font-semibold text-gray-900">Notifications</h3>
                 <div className="flex items-center space-x-2">
                   <button
-                    onClick={() => setSoundEnabled(!soundEnabled)}
+                    onClick={() => {
+                      setSoundEnabled(!soundEnabled);
+                      const AC = window.AudioContext || window.webkitAudioContext;
+                      if (AC && !audioContextRef.current) {
+                        audioContextRef.current = new AC();
+                      }
+                      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+                        audioContextRef.current.resume();
+                      }
+                    }}
                     className="p-1 text-gray-500 hover:text-gray-700"
                     title={soundEnabled ? 'Disable sounds' : 'Enable sounds'}
                   >
@@ -228,8 +271,14 @@ export const NotificationCenter = () => {
                     </button>
                   )}
                   <button
-                    onClick={() => setIsOpen(false)}
-                    className="p-1 text-gray-500 hover:text-gray-700"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      setIsOpen(false);
+                    }}
+                    className="p-1 text-gray-500 hover:text-gray-700 z-10"
+                    type="button"
+                    aria-label="Close notification panel"
                   >
                     <X className="w-4 h-4" />
                   </button>

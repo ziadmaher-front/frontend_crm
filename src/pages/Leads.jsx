@@ -1,5 +1,6 @@
 
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +31,7 @@ import {
   SortDesc,
   Zap,
   TrendingUp,
+  MapPin,
 } from "lucide-react";
 import {
   Dialog,
@@ -53,6 +55,8 @@ import { AccessibleFormField } from '@/components/AccessibilityEnhancements';
 import { createPageUrl } from '@/utils';
 import { getSavedViews, saveView, deleteView } from "@/store/savedViews";
 
+const NO_SAVED_VIEWS_VALUE = "__no_saved_views__";
+
 export default function Leads() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -72,19 +76,16 @@ export default function Leads() {
   const [formData, setFormData] = useState({
     first_name: "",
     last_name: "",
-    job_title: "",
-    company: "",
     email: "",
     phone: "",
-    lead_source: "Website",
-    status: "New",
-    lead_score: 0,
-    assigned_users: [],
-    notes: "",
+    shipping_street: "",
+    billing_city: "",
+    account_name: "",
   });
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState(null);
   const [savedViews, setSavedViews] = useState(getSavedViews('leads'));
   const [selectedSavedView, setSelectedSavedView] = useState(null);
@@ -360,15 +361,11 @@ export default function Leads() {
     setFormData({
       first_name: "",
       last_name: "",
-      job_title: "",
-      company: "",
       email: "",
       phone: "",
-      lead_source: "Website",
-      status: "New",
-      lead_score: 0,
-      assigned_users: [],
-      notes: "",
+      shipping_street: "",
+      billing_city: "",
+      account_name: "",
     });
   };
 
@@ -386,15 +383,11 @@ export default function Leads() {
     setFormData({
       first_name: lead.first_name || "",
       last_name: lead.last_name || "",
-      job_title: lead.job_title || "",
-      company: lead.company || "",
       email: lead.email || "",
       phone: lead.phone || "",
-      lead_source: lead.lead_source || "Website",
-      status: lead.status || "New",
-      lead_score: lead.lead_score || 0,
-      assigned_users: lead.assigned_users || [],
-      notes: lead.notes || "",
+      shipping_street: lead.shipping_street || lead.address || "",
+      billing_city: lead.billing_city || lead.city || "",
+      account_name: lead.account_name || lead.company || "",
     });
     setShowDialog(true);
   };
@@ -421,7 +414,7 @@ export default function Leads() {
   };
 
   const handleViewDetails = (lead) => {
-    window.location.href = createPageUrl('LeadDetails') + '?id=' + lead.id;
+    navigate(`/leads/${lead.id}`);
   };
 
   const handleDelete = (leadId) => {
@@ -550,13 +543,19 @@ export default function Leads() {
           </div>
           {/* Saved Views controls */}
           <div className="flex items-center gap-2">
-            <Select value={selectedSavedView ?? ''} onValueChange={applySavedView}>
+            <Select
+              value={selectedSavedView ?? ''}
+              onValueChange={(value) => {
+                if (value === NO_SAVED_VIEWS_VALUE) return;
+                applySavedView(value);
+              }}
+            >
               <SelectTrigger className="crm-select w-56">
                 <SelectValue placeholder="Saved Views" />
               </SelectTrigger>
               <SelectContent>
                 {savedViews.length === 0 ? (
-                  <SelectItem value="" disabled>No saved views</SelectItem>
+                  <SelectItem value={NO_SAVED_VIEWS_VALUE} disabled>No saved views</SelectItem>
                 ) : savedViews.map(v => (
                   <SelectItem key={v.name} value={v.name}>{v.name}</SelectItem>
                 ))}
@@ -853,9 +852,6 @@ export default function Leads() {
                                 {lead.serial_number}
                               </Badge>
                             )}
-                            {lead.job_title && (
-                              <p className="text-sm text-gray-500 mt-1">{lead.job_title}</p>
-                            )}
                           </div>
                         </div>
                         <div className="flex gap-1">
@@ -905,15 +901,12 @@ export default function Leads() {
                           </Button>
                         </div>
                       </div>
-                      <Badge className={`${statusColors[lead.status]} border mt-2 w-fit`}>
-                        {lead.status}
-                      </Badge>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                      {lead.company && (
+                      {lead.account_name && (
                         <div className="flex items-center gap-2 text-sm text-gray-600">
                           <Building2 className="w-4 h-4 text-gray-400" />
-                          <span>{lead.company}</span>
+                          <span>{lead.account_name}</span>
                         </div>
                       )}
                       {lead.email && (
@@ -926,6 +919,18 @@ export default function Leads() {
                         <div className="flex items-center gap-2 text-sm text-gray-600">
                           <Phone className="w-4 h-4 text-gray-400" />
                           <span>{lead.phone}</span>
+                        </div>
+                      )}
+                      {lead.shipping_street && (
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <MapPin className="w-4 h-4 text-gray-400" />
+                          <span className="truncate">{lead.shipping_street}</span>
+                        </div>
+                      )}
+                      {lead.billing_city && (
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <MapPin className="w-4 h-4 text-gray-400" />
+                          <span>{lead.billing_city}</span>
                         </div>
                       )}
 
@@ -1002,28 +1007,17 @@ export default function Leads() {
                             </div>
                           </div>
                           <div>
-                            <p className="text-sm text-gray-600">{lead.company}</p>
-                            <p className="text-xs text-gray-500">{lead.job_title}</p>
+                            <p className="text-sm text-gray-600">{lead.account_name || lead.company || '-'}</p>
+                            <p className="text-xs text-gray-500">{lead.billing_city || '-'}</p>
                           </div>
                           <div>
-                            <p className="text-sm text-gray-600">{lead.email}</p>
-                            <p className="text-xs text-gray-500">{lead.phone}</p>
+                            <p className="text-sm text-gray-600">{lead.email || '-'}</p>
+                            <p className="text-xs text-gray-500">{lead.phone || '-'}</p>
                           </div>
                           <div>
-                            <Badge className={`${statusColors[lead.status]}`}>
-                              {lead.status}
-                            </Badge>
+                            <p className="text-sm text-gray-600">{lead.shipping_street || '-'}</p>
                           </div>
                           <div className="flex items-center justify-end gap-2">
-                            <div className="text-right">
-                              <p className="text-sm font-semibold">{lead.lead_score}/100</p>
-                              <div className="w-20 bg-gray-200 rounded-full h-1.5 mt-1">
-                                <div
-                                  className="bg-gradient-to-r from-indigo-500 to-purple-500 h-1.5 rounded-full"
-                                  style={{ width: `${lead.lead_score}%` }}
-                                />
-                              </div>
-                            </div>
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1077,11 +1071,11 @@ export default function Leads() {
                         </th>
                         <th className="crm-table-cell">Serial #</th>
                         <th className="crm-table-cell">Name</th>
-                        <th className="crm-table-cell">Company</th>
+                        <th className="crm-table-cell">Account Name</th>
                         <th className="crm-table-cell">Email</th>
                         <th className="crm-table-cell">Phone</th>
-                        <th className="crm-table-cell">Status</th>
-                        <th className="crm-table-cell">Score</th>
+                        <th className="crm-table-cell">Shipping Street</th>
+                        <th className="crm-table-cell">Billing City</th>
                         <th className="crm-table-cell">Actions</th>
                       </tr>
                     </thead>
@@ -1117,25 +1111,11 @@ export default function Leads() {
                               </div>
                             </div>
                           </td>
-                          <td className="crm-table-cell text-gray-600">{lead.company}</td>
-                          <td className="crm-table-cell text-gray-600">{lead.email}</td>
+                          <td className="crm-table-cell text-gray-600">{lead.account_name || lead.company || '-'}</td>
+                          <td className="crm-table-cell text-gray-600">{lead.email || '-'}</td>
                           <td className="crm-table-cell text-gray-600">{lead.phone || '-'}</td>
-                          <td className="crm-table-cell">
-                            <Badge className={`${statusColors[lead.status]}`}>
-                              {lead.status}
-                            </Badge>
-                          </td>
-                          <td className="crm-table-cell">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-semibold">{lead.lead_score}</span>
-                              <div className="w-16 bg-gray-200 rounded-full h-2">
-                                <div
-                                  className="bg-gradient-to-r from-indigo-500 to-purple-500 h-2 rounded-full"
-                                  style={{ width: `${lead.lead_score}%` }}
-                                />
-                              </div>
-                            </div>
-                          </td>
+                          <td className="crm-table-cell text-gray-600 truncate max-w-xs">{lead.shipping_street || '-'}</td>
+                          <td className="crm-table-cell text-gray-600">{lead.billing_city || '-'}</td>
                           <td className="crm-table-cell">
                             <div className="flex gap-1">
                               <Button
@@ -1195,6 +1175,7 @@ export default function Leads() {
                 <Input
                   value={formData.first_name}
                   onChange={(e) => setFormData({...formData, first_name: e.target.value})}
+                  required
                 />
               </AccessibleFormField>
               <AccessibleFormField
@@ -1204,27 +1185,9 @@ export default function Leads() {
                 <Input
                   value={formData.last_name}
                   onChange={(e) => setFormData({...formData, last_name: e.target.value})}
+                  required
                 />
               </AccessibleFormField>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="job_title">Job Title</Label>
-                <Input
-                  id="job_title"
-                  value={formData.job_title}
-                  onChange={(e) => setFormData({...formData, job_title: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="company">Company</Label>
-                <Input
-                  id="company"
-                  value={formData.company}
-                  onChange={(e) => setFormData({...formData, company: e.target.value})}
-                />
-              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -1239,89 +1202,46 @@ export default function Leads() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
+                <Label htmlFor="phone">Phone *</Label>
                 <Input
                   id="phone"
                   value={formData.phone}
                   onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                  required
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="lead_source">Lead Source</Label>
-                <Select value={formData.lead_source} onValueChange={(value) => setFormData({...formData, lead_source: value})}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Website">Website</SelectItem>
-                    <SelectItem value="Referral">Referral</SelectItem>
-                    <SelectItem value="Social Media">Social Media</SelectItem>
-                    <SelectItem value="Cold Call">Cold Call</SelectItem>
-                    <SelectItem value="Email Campaign">Email Campaign</SelectItem>
-                    <SelectItem value="Trade Show">Trade Show</SelectItem>
-                    <SelectItem value="Partner">Partner</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="status">Status</Label>
-                <Select value={formData.status} onValueChange={(value) => setFormData({...formData, status: value})}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="New">New</SelectItem>
-                    <SelectItem value="Contacted">Contacted</SelectItem>
-                    <SelectItem value="Qualified">Qualified</SelectItem>
-                    <SelectItem value="Unqualified">Unqualified</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
             <div className="space-y-2">
-              <Label htmlFor="lead_score">Lead Score (0-100)</Label>
-              <input
-                type="range"
-                id="lead_score"
-                min="0"
-                max="100"
-                value={formData.lead_score}
-                onChange={(e) => setFormData({...formData, lead_score: parseInt(e.target.value)})}
-                className="w-full"
-              />
-              <div className="flex justify-between text-xs text-gray-500">
-                <span>0</span>
-                <span className="font-semibold text-gray-700">{formData.lead_score}</span>
-                <span>100</span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Assignments</Label>
-              <AssignmentManager
-                assignedUsers={formData.assigned_users}
-                productLines={[]}
-                allUsers={users}
-                allProductLines={[]}
-                onUpdate={(assignments) => setFormData({
-                  ...formData,
-                  assigned_users: assignments.assigned_users,
-                })}
+              <Label htmlFor="shipping_street">Shipping Street *</Label>
+              <Input
+                id="shipping_street"
+                value={formData.shipping_street}
+                onChange={(e) => setFormData({...formData, shipping_street: e.target.value})}
+                placeholder="Enter street address"
+                required
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => setFormData({...formData, notes: e.target.value})}
-                rows={3}
+              <Label htmlFor="billing_city">Billing City *</Label>
+              <Input
+                id="billing_city"
+                value={formData.billing_city}
+                onChange={(e) => setFormData({...formData, billing_city: e.target.value})}
+                placeholder="Enter city"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="account_name">Account Name *</Label>
+              <Input
+                id="account_name"
+                value={formData.account_name}
+                onChange={(e) => setFormData({...formData, account_name: e.target.value})}
+                placeholder="Enter account/company name"
+                required
               />
             </div>
 

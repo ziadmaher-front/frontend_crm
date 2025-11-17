@@ -342,9 +342,14 @@ export class EnhancedErrorBoundary extends React.Component {
             <h3 className="text-lg font-medium text-gray-900 text-center mb-2">
               Something went wrong
             </h3>
-            <p className="text-sm text-gray-600 text-center mb-4">
+            <p className="text-sm text-gray-600 text-center mb-2">
               The application encountered an unexpected error. Please try refreshing the page.
             </p>
+            {this.state.error && (
+              <pre className="text-xs text-left bg-gray-100 p-3 rounded-md overflow-x-auto mb-4">
+                {this.state.error?.message || String(this.state.error)}
+              </pre>
+            )}
             <div className="flex space-x-3">
               <button
                 onClick={() => this.setState({ hasError: false, error: null })}

@@ -63,8 +63,10 @@ import AssignmentManager from "../components/AssignmentManager";
 import BulkOperations from "../components/BulkOperations";
 import { SwipeToDelete, TouchCard, PullToRefresh } from "@/components/TouchInteractions";
 import { createPageUrl } from "@/utils";
+import { useToast } from "@/components/ui/use-toast";
 
 export default function Accounts() {
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [territoryFilter, setTerritoryFilter] = useState("all");
@@ -75,29 +77,29 @@ export default function Accounts() {
   const [selectedAccounts, setSelectedAccounts] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [recordsPerPage, setRecordsPerPage] = useState(100);
-  const [sortField, setSortField] = useState("company_name");
+  const [sortField, setSortField] = useState("name");
   const [sortDirection, setSortDirection] = useState("asc");
   const [showFilters, setShowFilters] = useState(true);
+  const [accountToDelete, setAccountToDelete] = useState(null);
   
   const [formData, setFormData] = useState({
-    company_name: "",
-    website: "",
-    industry: "Technology",
-    employee_count: "11-50",
-    annual_revenue: 0,
-    phone: "",
-    email: "",
-    billing_address: "",
+    // Required fields
+    name: "",
+    accountNumber: "",
+    billing_street: "",
     billing_city: "",
+    ownerId: "",
+    // Optional fields
+    website: "",
+    billing_state: "",
+    billing_zip: "",
     billing_country: "",
-    shipping_address: "",
+    shipping_street: "",
     shipping_city: "",
+    shipping_state: "",
+    shipping_zip: "",
     shipping_country: "",
-    account_type: "Prospect",
-    account_status: "Active",
-    notes: "",
-    assigned_users: [],
-    product_lines: [],
+    parentAccountId: "",
   });
 
   const queryClient = useQueryClient();
@@ -136,9 +138,23 @@ export default function Accounts() {
     queryFn: () => base44.entities.Account.list('-created_date'),
   });
 
-  const { data: users = [] } = useQuery({
+  const { data: users = [], isLoading: usersLoading, error: usersError } = useQuery({
     queryKey: ['users'],
-    queryFn: () => base44.entities.User.list(),
+    queryFn: async () => {
+      try {
+        const usersList = await base44.entities.User.list();
+        console.log('Users fetched in Accounts page:', usersList.length, 'users');
+        if (usersList.length > 0) {
+          console.log('First user sample:', usersList[0]);
+        }
+        return usersList;
+      } catch (error) {
+        console.error('Error fetching users in Accounts page:', error);
+        return []; // Return empty array on error
+      }
+    },
+    retry: 1,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
   const { data: productLines = [] } = useQuery({
@@ -198,20 +214,27 @@ export default function Accounts() {
 
   const createMutation = useMutation({
     mutationFn: async (data) => {
-      const serialNumber = (currentUser && serializationSettings.length > 0)
-                           ? await generateSerialNumber()
-                           : null;
-
-      return base44.entities.Account.create({
-        ...data,
-        serial_number: serialNumber
-      });
+      // Remove serial_number and ownerId as they're not part of backend schema for creation
+      const { serial_number, ownerId, owner_id, owner, ...accountData } = data;
+      console.log('Creating account with data (ownerId removed):', accountData);
+      return base44.entities.Account.create(accountData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
-      queryClient.invalidateQueries({ queryKey: ['serializationSettings'] });
       setShowDialog(false);
       resetForm();
+      toast({
+        title: "Success",
+        description: "Account created successfully",
+      });
+    },
+    onError: (error) => {
+      console.error('Error creating account:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create account",
+        variant: "destructive",
+      });
     },
   });
 
@@ -222,6 +245,18 @@ export default function Accounts() {
       setShowDialog(false);
       setEditingAccount(null);
       resetForm();
+      toast({
+        title: "Success",
+        description: "Account updated successfully",
+      });
+    },
+    onError: (error) => {
+      console.error('Error updating account:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update account",
+        variant: "destructive",
+      });
     },
   });
 
@@ -229,62 +264,143 @@ export default function Accounts() {
     mutationFn: (id) => base44.entities.Account.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      setAccountToDelete(null);
+      toast({
+        title: "Success",
+        description: "Account deleted successfully",
+      });
+    },
+    onError: (error) => {
+      console.error('Error deleting account:', error);
+      setAccountToDelete(null);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete account",
+        variant: "destructive",
+      });
     },
   });
 
+  const handleDelete = (account) => {
+    setAccountToDelete(account);
+  };
+
+  const confirmDelete = () => {
+    if (accountToDelete) {
+      deleteMutation.mutate(accountToDelete.id);
+    }
+  };
+
   const resetForm = () => {
     setFormData({
-      company_name: "",
-      website: "",
-      industry: "Technology",
-      employee_count: "11-50",
-      annual_revenue: 0,
-      phone: "",
-      email: "",
-      billing_address: "",
+      // Required fields
+      name: "",
+      accountNumber: "",
+      billing_street: "",
       billing_city: "",
+      ownerId: "",
+      // Optional fields
+      website: "",
+      billing_state: "",
+      billing_zip: "",
       billing_country: "",
-      shipping_address: "",
+      shipping_street: "",
       shipping_city: "",
+      shipping_state: "",
+      shipping_zip: "",
       shipping_country: "",
-      account_type: "Prospect",
-      account_status: "Active",
-      notes: "",
-      assigned_users: [],
-      product_lines: [],
+      parentAccountId: "",
     });
+    setEditingAccount(null);
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    
+    // Validate required fields
+    if (!formData.name || !formData.billing_street || !formData.billing_city) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields (Name, Billing Street, Billing City)",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Prepare data for submission
+    // Backend automatically sets ownerId, createdById, and modifiedById on creation from JWT token
+    const submitData = {
+      name: formData.name,
+      accountNumber: formData.accountNumber || null, // Will be auto-generated if null
+      billing_street: formData.billing_street,
+      billing_city: formData.billing_city,
+      billing_state: formData.billing_state || undefined,
+      billing_zip: formData.billing_zip || undefined,
+      billing_country: formData.billing_country || undefined,
+      shipping_street: formData.shipping_street || undefined,
+      shipping_city: formData.shipping_city || undefined,
+      shipping_state: formData.shipping_state || undefined,
+      shipping_zip: formData.shipping_zip || undefined,
+      shipping_country: formData.shipping_country || undefined,
+      parentAccountId: formData.parentAccountId === "__none__" || formData.parentAccountId === "" || !formData.parentAccountId ? null : formData.parentAccountId,
+    };
+
+    // Only include ownerId when updating (backend sets it automatically on create)
+    if (editingAccount && formData.ownerId) {
+      submitData.ownerId = formData.ownerId;
+    }
+
+    // Only include website if it's a valid URL
+    if (formData.website && formData.website.trim()) {
+      // Ensure website starts with http:// or https://
+      let websiteUrl = formData.website.trim();
+      if (!websiteUrl.startsWith('http://') && !websiteUrl.startsWith('https://')) {
+        websiteUrl = 'https://' + websiteUrl;
+      }
+      submitData.website = websiteUrl;
+    }
+
+    // Remove undefined fields
+    Object.keys(submitData).forEach(key => {
+      if (submitData[key] === undefined || submitData[key] === "") {
+        delete submitData[key];
+      }
+    });
+
+    // Explicitly remove ownerId from create requests (backend sets it automatically)
+    if (!editingAccount) {
+      delete submitData.ownerId;
+      delete submitData.owner_id;
+      delete submitData.owner;
+    }
+
     if (editingAccount) {
-      updateMutation.mutate({ id: editingAccount.id, data: formData });
+      updateMutation.mutate({ id: editingAccount.id, data: submitData });
     } else {
-      createMutation.mutate(formData);
+      createMutation.mutate(submitData);
     }
   };
 
   const handleEdit = (account) => {
     setEditingAccount(account);
     setFormData({
-      company_name: account.company_name || "",
-      website: account.website || "",
-      industry: account.industry || "Technology",
-      employee_count: account.employee_count || "11-50",
-      annual_revenue: account.annual_revenue || 0,
-      phone: account.phone || "",
-      email: account.email || "",
-      billing_address: account.billing_address || "",
+      // Required fields
+      name: account.name || account.company_name || "",
+      accountNumber: account.accountNumber || account.account_number || "",
+      billing_street: account.billing_street || account.billing_address || "",
       billing_city: account.billing_city || "",
-      billing_country: account.billing_country || "",
-      shipping_address: account.shipping_address || "",
-      shipping_city: account.shipping_city || "",
-      shipping_country: account.shipping_country || "",
-      account_type: account.account_type || "Prospect",
-      account_status: account.account_status || "Active",
-      notes: account.notes || "",
-      assigned_users: account.assigned_users || [],
-      product_lines: account.product_lines || [],
+      ownerId: account.ownerId || account.owner_id || account.owner?.id || "",
+      // Optional fields
+      website: account.website || "",
+      billing_state: account.billing_state || account.billingState || "",
+      billing_zip: account.billing_zip || account.billingZip || account.billing_zip_code || "",
+      billing_country: account.billing_country || account.billingCountry || "",
+      shipping_street: account.shipping_street || account.shipping_address || account.shippingAddress || "",
+      shipping_city: account.shipping_city || account.shippingCity || "",
+      shipping_state: account.shipping_state || account.shippingState || "",
+      shipping_zip: account.shipping_zip || account.shippingZip || account.shipping_zip_code || "",
+      shipping_country: account.shipping_country || account.shippingCountry || "",
+      parentAccountId: account.parentAccountId || account.parent_account_id || account.parentAccount?.id || "",
     });
     setShowDialog(true);
   };
@@ -292,8 +408,10 @@ export default function Accounts() {
   const copyBillingToShipping = () => {
     setFormData({
       ...formData,
-      shipping_address: formData.billing_address,
+      shipping_street: formData.billing_street,
       shipping_city: formData.billing_city,
+      shipping_state: formData.billing_state,
+      shipping_zip: formData.billing_zip,
       shipping_country: formData.billing_country,
     });
   };
@@ -301,8 +419,10 @@ export default function Accounts() {
   const copyShippingToBilling = () => {
     setFormData({
       ...formData,
-      billing_address: formData.shipping_address,
+      billing_street: formData.shipping_street,
       billing_city: formData.shipping_city,
+      billing_state: formData.shipping_state,
+      billing_zip: formData.shipping_zip,
       billing_country: formData.shipping_country,
     });
   };
@@ -322,12 +442,14 @@ export default function Accounts() {
   };
 
   const filteredAccounts = accounts.filter(account => {
+    const accountName = account.name || account.company_name || '';
     const matchesSearch =
-      account.company_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      account.industry?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      account.serial_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      account.email?.toLowerCase().includes(searchQuery.toLowerCase());
+      accountName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      account.accountNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      account.phone?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      account.website?.toLowerCase().includes(searchQuery.toLowerCase());
     
+    // Note: account_type and account_status may not exist in new backend
     const matchesType = filterType === "all" || account.account_type === filterType;
     const matchesStatus = statusFilter === "all" || account.account_status === statusFilter;
     
@@ -515,10 +637,25 @@ export default function Accounts() {
               </DropdownMenu>
               
               <Button
-                onClick={() => {
-                  setEditingAccount(null);
-                  resetForm();
-                  setShowDialog(true);
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log('Create Account button clicked');
+                  try {
+                    setEditingAccount(null);
+                    resetForm();
+                    console.log('Form reset, opening dialog');
+                    setShowDialog(true);
+                    console.log('Dialog state set to true');
+                  } catch (error) {
+                    console.error('Error opening dialog:', error);
+                    toast({
+                      title: "Error",
+                      description: "Failed to open form. Please try again.",
+                      variant: "destructive",
+                    });
+                  }
                 }}
                 className="crm-btn-primary"
               >
@@ -634,17 +771,17 @@ export default function Accounts() {
                     />
                   </td>
                   <td className="crm-table-cell text-blue-600 font-medium">
-                    {account.serial_number || `ACC-${String(index + 1).padStart(3, '0')}`}
+                    {account.accountNumber || account.account_number || account.serial_number || `ACC-${String(index + 1).padStart(3, '0')}`}
                   </td>
                   <td className="crm-table-cell">
                     <div className="flex items-center gap-2">
                       <div className="crm-avatar bg-gradient-to-br from-blue-500 to-purple-500">
-                        {account.company_name?.[0] || 'A'}
+                        {(account.name || account.company_name)?.[0] || 'A'}
                       </div>
                       <div>
-                        <div className="font-medium text-gray-900">{account.company_name}</div>
-                        {account.industry && (
-                          <div className="text-xs text-gray-500">{account.industry}</div>
+                        <div className="font-medium text-gray-900">{account.name || account.company_name}</div>
+                        {account.website && (
+                          <div className="text-xs text-gray-500">{account.website}</div>
                         )}
                       </div>
                     </div>
@@ -664,11 +801,28 @@ export default function Accounts() {
                     ) : '-'}
                   </td>
                   <td className="crm-table-cell text-gray-600">
-                    {account.assigned_users?.[0] ? getUserName(account.assigned_users[0]) : 'Ahmed Ashour'}
+                    {(() => {
+                      const ownerId = account.ownerId || account.owner_id || account.owner?.id;
+                      if (ownerId) {
+                        const owner = users.find(u => u.id === ownerId);
+                        return owner ? (owner.name || owner.email) : '-';
+                      }
+                      return account.assigned_users?.[0] ? getUserName(account.assigned_users[0]) : '-';
+                    })()}
                   </td>
-                  <td className="crm-table-cell text-gray-600">-</td>
                   <td className="crm-table-cell text-gray-600">
-                    {account.updated_date ? new Date(account.updated_date).toLocaleDateString() : '10/09/24'}
+                    {(() => {
+                      const parentId = account.parentAccountId || account.parent_account_id || account.parentAccount?.id;
+                      if (parentId) {
+                        const parent = accounts.find(a => a.id === parentId);
+                        return parent ? (parent.name || parent.company_name) : '-';
+                      }
+                      return '-';
+                    })()}
+                  </td>
+                  <td className="crm-table-cell text-gray-600">
+                    {account.updatedAt ? new Date(account.updatedAt).toLocaleDateString() : 
+                     account.updated_date ? new Date(account.updated_date).toLocaleDateString() : '-'}
                   </td>
                   <td className="crm-table-cell">
                     <DropdownMenu>
@@ -688,7 +842,10 @@ export default function Accounts() {
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem 
-                          onClick={() => deleteMutation.mutate(account.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(account);
+                          }}
                           className="text-red-600"
                         >
                           <Trash2 className="w-4 h-4 mr-2" />
@@ -734,8 +891,282 @@ export default function Accounts() {
         </div>
       </div>
 
-      {/* Dialog remains the same */}
-      {/* ... existing dialog code ... */}
+      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingAccount ? 'Edit Account' : 'Add New Account'}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Required Fields */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Account Name *</Label>
+                <Input
+                  id="name"
+                  value={formData.name || ""}
+                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  placeholder="Enter account name"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="accountNumber">Account Number *</Label>
+                <Input
+                  id="accountNumber"
+                  value={formData.accountNumber || ""}
+                  onChange={(e) => setFormData({...formData, accountNumber: e.target.value})}
+                  placeholder="Auto-generated if empty"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="website">Website</Label>
+              <Input
+                id="website"
+                type="url"
+                value={formData.website || ""}
+                onChange={(e) => setFormData({...formData, website: e.target.value})}
+                placeholder="https://example.com or example.com"
+              />
+              <p className="text-xs text-gray-500">Enter a valid URL (http:// or https:// will be added automatically if missing)</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ownerId">
+                Account Owner {editingAccount ? '*' : '(Optional - defaults to you)'}
+              </Label>
+              <Select 
+                value={formData.ownerId || ""} 
+                onValueChange={(value) => {
+                  if (value && value !== "__disabled__" && value !== "__loading__" && value !== "__error__") {
+                    setFormData({...formData, ownerId: value});
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={usersLoading ? "Loading users..." : editingAccount ? "Select owner..." : "Will default to you"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {usersLoading ? (
+                    <SelectItem value="__loading__" disabled>Loading users...</SelectItem>
+                  ) : usersError ? (
+                    <SelectItem value="__error__" disabled>Error loading users</SelectItem>
+                  ) : Array.isArray(users) && users.length > 0 ? (
+                    users
+                      .filter(user => user?.id) // Filter out users without IDs
+                      .map((user) => (
+                        <SelectItem key={user.id} value={user.id}>
+                          {user.name || user.email || user.id || "Unknown User"}
+                        </SelectItem>
+                      ))
+                  ) : (
+                    <SelectItem value="__disabled__" disabled>No users available</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Billing Address Section */}
+            <div className="border-t pt-4">
+              <h3 className="text-sm font-semibold mb-3">Billing Address</h3>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="billing_street">Billing Street *</Label>
+                  <Input
+                    id="billing_street"
+                    value={formData.billing_street || ""}
+                    onChange={(e) => setFormData({...formData, billing_street: e.target.value})}
+                    placeholder="Enter street address"
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="billing_city">Billing City *</Label>
+                    <Input
+                      id="billing_city"
+                      value={formData.billing_city || ""}
+                      onChange={(e) => setFormData({...formData, billing_city: e.target.value})}
+                      placeholder="Enter city"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="billing_state">Billing State</Label>
+                    <Input
+                      id="billing_state"
+                      value={formData.billing_state || ""}
+                      onChange={(e) => setFormData({...formData, billing_state: e.target.value})}
+                      placeholder="Enter state"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="billing_zip">Billing ZIP</Label>
+                    <Input
+                      id="billing_zip"
+                      value={formData.billing_zip || ""}
+                      onChange={(e) => setFormData({...formData, billing_zip: e.target.value})}
+                      placeholder="Enter ZIP code"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="billing_country">Billing Country</Label>
+                    <Input
+                      id="billing_country"
+                      value={formData.billing_country || ""}
+                      onChange={(e) => setFormData({...formData, billing_country: e.target.value})}
+                      placeholder="Enter country"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Shipping Address Section */}
+            <div className="border-t pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold">Shipping Address</h3>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={copyBillingToShipping}
+                >
+                  Copy from Billing
+                </Button>
+              </div>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="shipping_street">Shipping Street</Label>
+                  <Input
+                    id="shipping_street"
+                    value={formData.shipping_street || ""}
+                    onChange={(e) => setFormData({...formData, shipping_street: e.target.value})}
+                    placeholder="Enter street address"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="shipping_city">Shipping City</Label>
+                    <Input
+                      id="shipping_city"
+                      value={formData.shipping_city || ""}
+                      onChange={(e) => setFormData({...formData, shipping_city: e.target.value})}
+                      placeholder="Enter city"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="shipping_state">Shipping State</Label>
+                    <Input
+                      id="shipping_state"
+                      value={formData.shipping_state || ""}
+                      onChange={(e) => setFormData({...formData, shipping_state: e.target.value})}
+                      placeholder="Enter state"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="shipping_zip">Shipping ZIP</Label>
+                    <Input
+                      id="shipping_zip"
+                      value={formData.shipping_zip || ""}
+                      onChange={(e) => setFormData({...formData, shipping_zip: e.target.value})}
+                      placeholder="Enter ZIP code"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="shipping_country">Shipping Country</Label>
+                    <Input
+                      id="shipping_country"
+                      value={formData.shipping_country || ""}
+                      onChange={(e) => setFormData({...formData, shipping_country: e.target.value})}
+                      placeholder="Enter country"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Parent Account */}
+            <div className="space-y-2">
+              <Label htmlFor="parentAccountId">Parent Account</Label>
+              <Select 
+                value={formData.parentAccountId || "__none__"} 
+                onValueChange={(value) => {
+                  if (value === "__none__") {
+                    setFormData({...formData, parentAccountId: null});
+                  } else if (value && value !== "__disabled__") {
+                    setFormData({...formData, parentAccountId: value});
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select parent account (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {Array.isArray(accounts) && accounts.length > 0 ? (
+                    accounts
+                      .filter(a => a?.id && a.id !== editingAccount?.id)
+                      .map((account) => (
+                        <SelectItem key={account.id} value={account.id}>
+                          {account.name || account.company_name || account.id}
+                        </SelectItem>
+                      ))
+                  ) : (
+                    <SelectItem value="__disabled__" disabled>No accounts available</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShowDialog(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-gradient-to-r from-blue-600 to-indigo-600">
+                {editingAccount ? 'Update' : 'Create'} Account
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!accountToDelete} onOpenChange={(open) => !open && setAccountToDelete(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Account</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Are you sure you want to delete the account "{accountToDelete?.name || accountToDelete?.company_name}"? 
+              This action cannot be undone.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => setAccountToDelete(null)}
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="button" 
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

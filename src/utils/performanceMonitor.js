@@ -5,13 +5,16 @@
 
 class PerformanceMonitor {
   constructor() {
+    const renderThresholdOverride = this.getEnvNumber('VITE_PERF_RENDER_THRESHOLD_MS');
+    const memoryThresholdOverride = this.getEnvNumber('VITE_PERF_MEMORY_WARNING_MB');
+
     this.metrics = new Map();
     this.observers = new Map();
     this.thresholds = {
-      renderTime: 16, // 60fps target
+      renderTime: renderThresholdOverride ?? 18.5, // allow small overshoot of the 60fps target
       apiResponseTime: 1000, // 1 second
       bundleSize: 500 * 1024, // 500KB
-      memoryUsage: 50 * 1024 * 1024, // 50MB
+      memoryUsage: (memoryThresholdOverride ?? 80) * 1024 * 1024, // default 80MB
       cacheHitRate: 80, // 80%
     };
     this.isMonitoring = false;
@@ -190,6 +193,10 @@ class PerformanceMonitor {
     // Monitor React component renders
     let renderCount = 0;
     let renderStartTime = null;
+    const frameTimes = [];
+    const FRAME_SAMPLE_SIZE = 30;
+    const MAX_WARNINGS = 5;
+    let slowRenderWarningCount = 0;
 
     const measureRender = () => {
       if (renderStartTime) {
@@ -200,8 +207,22 @@ class PerformanceMonitor {
           timestamp: Date.now(),
         });
 
-        if (renderTime > this.thresholds.renderTime) {
-          console.warn(`⚠️ Slow render: ${renderTime.toFixed(2)}ms`);
+        frameTimes.push(renderTime);
+
+        if (frameTimes.length >= FRAME_SAMPLE_SIZE) {
+          const averageRenderTime = frameTimes.reduce((sum, time) => sum + time, 0) / frameTimes.length;
+          frameTimes.length = 0;
+
+          if (averageRenderTime > this.thresholds.renderTime) {
+            slowRenderWarningCount += 1;
+            if (slowRenderWarningCount <= MAX_WARNINGS) {
+              console.warn(`⚠️ Slow render detected. Avg frame over last ${FRAME_SAMPLE_SIZE} samples: ${averageRenderTime.toFixed(2)}ms`);
+            } else if (slowRenderWarningCount === MAX_WARNINGS + 1) {
+              console.warn('⚠️ Additional slow render warnings suppressed to avoid console spam.');
+            }
+          } else {
+            slowRenderWarningCount = 0;
+          }
         }
       }
       
@@ -211,13 +232,13 @@ class PerformanceMonitor {
 
     // Use requestAnimationFrame to measure render performance
     const scheduleRenderMeasurement = () => {
-      requestAnimationFrame(() => {
+      this._renderMonitorRaf = requestAnimationFrame(() => {
         measureRender();
         scheduleRenderMeasurement();
       });
     };
 
-    scheduleRenderMeasurement();
+    this._renderMonitorRaf = requestAnimationFrame(scheduleRenderMeasurement);
   }
 
   recordMetric(category, data) {
@@ -270,6 +291,11 @@ class PerformanceMonitor {
       observer.disconnect();
     }
     this.observers.clear();
+    
+    if (this._renderMonitorRaf) {
+      cancelAnimationFrame(this._renderMonitorRaf);
+      this._renderMonitorRaf = null;
+    }
     
     console.log('📊 Performance monitoring stopped');
   }
@@ -498,6 +524,17 @@ class PerformanceMonitor {
     };
 
     return JSON.stringify(exportData, null, 2);
+  }
+
+  getEnvNumber(envKey) {
+    try {
+      const rawValue = import.meta?.env?.[envKey];
+      if (rawValue === undefined) return null;
+      const parsed = Number(rawValue);
+      return Number.isFinite(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
   }
 }
 

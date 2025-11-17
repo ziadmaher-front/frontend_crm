@@ -52,7 +52,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import AssignmentManager from "../components/AssignmentManager";
 import BulkOperations from "../components/BulkOperations";
-import { createPageUrl } from "@/utils";
+import { useNavigate } from "react-router-dom";
 import { PageSkeleton } from "@/components/ui/loading-states";
 
 export default function Contacts() {
@@ -71,22 +71,23 @@ export default function Contacts() {
   const [sortOrder, setSortOrder] = useState("desc");
   const isMobile = useIsMobile();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     first_name: "",
     last_name: "",
     email: "",
-    account_id: "",
     phone: "",
-    mobile: "",
-    job_title: "",
+    mobile_phone: "",
+    account_name: "",
     department: "",
-    linkedin_url: "",
-    address: "",
-    city: "",
-    country: "",
-    notes: "",
-    assigned_users: [],
-    product_lines: [],
+    territory: "",
+    assistant_name: "",
+    currency_code: "",
+    mailing_street: "",
+    mailing_city: "",
+    mailing_state: "",
+    mailing_zip: "",
+    mailing_country: "",
   });
 
   const queryClient = useQueryClient();
@@ -304,20 +305,22 @@ export default function Contacts() {
       first_name: "",
       last_name: "",
       email: "",
-      account_id: "",
       phone: "",
-      mobile: "",
-      job_title: "",
+      mobile_phone: "",
+      account_name: "",
       department: "",
-      linkedin_url: "",
-      address: "",
-      city: "",
-      country: "",
-      notes: "",
-      assigned_users: [],
-      product_lines: [],
+      territory: "",
+      assistant_name: "",
+      currency_code: "",
+      mailing_street: "",
+      mailing_city: "",
+      mailing_state: "",
+      mailing_zip: "",
+      mailing_country: "",
     });
+    setEditingContact(null);
   };
+
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -334,24 +337,24 @@ export default function Contacts() {
       first_name: contact.first_name || "",
       last_name: contact.last_name || "",
       email: contact.email || "",
-      account_id: contact.account_id || "",
       phone: contact.phone || "",
-      mobile: contact.mobile || "",
-      job_title: contact.job_title || "",
+      mobile_phone: contact.mobile_phone || contact.mobile || "",
+      account_name: contact.account_name || contact.account || "",
       department: contact.department || "",
-      linkedin_url: contact.linkedin_url || "",
-      address: contact.address || "",
-      city: contact.city || "",
-      country: contact.country || "",
-      notes: contact.notes || "",
-      assigned_users: contact.assigned_users || [],
-      product_lines: contact.product_lines || [],
+      territory: contact.territory || "",
+      assistant_name: contact.assistant_name || contact.assistant || "",
+      currency_code: contact.currency_code || contact.currency || "",
+      mailing_street: contact.mailing_street || contact.address || contact.street || "",
+      mailing_city: contact.mailing_city || contact.city || "",
+      mailing_state: contact.mailing_state || contact.state || "",
+      mailing_zip: contact.mailing_zip || contact.zip || contact.postal_code || "",
+      mailing_country: contact.mailing_country || contact.country || "",
     });
     setShowDialog(true);
   };
 
   const handleViewDetails = (contact) => {
-    window.location.href = createPageUrl('ContactDetails') + '?id=' + contact.id;
+    navigate(`/contacts/${contact.id}`);
   };
 
   // New handler functions for enhanced functionality
@@ -400,8 +403,8 @@ export default function Contacts() {
 
   const clearFilters = () => {
     setSearchQuery("");
-    setFilterAccount("");
-    setFilterOwner("");
+    setFilterAccount("all");
+    setFilterOwner("all");
     setFilterJobTitle("");
     setFilterDepartment("");
     setFilterCountry("");
@@ -1001,32 +1004,6 @@ export default function Contacts() {
             <DialogTitle>{editingContact ? 'Edit Contact' : 'Add New Contact'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <AccessibleFormField
-              label="Account"
-              description="Select the account this contact belongs to"
-              required={true}
-            >
-              <Select
-                value={formData.account_id}
-                onValueChange={(value) => setFormData({...formData, account_id: value})}
-                required
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select an account..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {accounts.map((account) => (
-                    <SelectItem key={account.id} value={account.id}>
-                      {account.company_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </AccessibleFormField>
-            {accounts.length === 0 && (
-              <p className="text-xs text-orange-600" role="alert">No accounts found. Please create an account first.</p>
-            )}
-
             <div className={`grid grid-cols-2 gap-4 ${isMobile ? 'grid-cols-1' : ''}`}>
               <AccessibleFormField
                 label="First Name"
@@ -1035,6 +1012,7 @@ export default function Contacts() {
                 <Input
                   value={formData.first_name}
                   onChange={(e) => setFormData({...formData, first_name: e.target.value})}
+                  required
                 />
               </AccessibleFormField>
               <AccessibleFormField
@@ -1044,130 +1022,147 @@ export default function Contacts() {
                 <Input
                   value={formData.last_name}
                   onChange={(e) => setFormData({...formData, last_name: e.target.value})}
+                  required
                 />
               </AccessibleFormField>
             </div>
 
-            <AccessibleFormField
-              label="Email"
-              description="Primary email address for this contact"
-              required={true}
-            >
-              <Input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({...formData, email: e.target.value})}
-              />
-            </AccessibleFormField>
-
             <div className={`grid grid-cols-2 gap-4 ${isMobile ? 'grid-cols-1' : ''}`}>
               <AccessibleFormField
+                label="Email"
+                required={true}
+              >
+                <Input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  required
+                />
+              </AccessibleFormField>
+              <AccessibleFormField
                 label="Phone"
-                description="Primary phone number"
+                required={true}
               >
                 <Input
                   value={formData.phone}
                   onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                  required
                 />
               </AccessibleFormField>
-              <AccessibleFormField
-                label="Mobile"
-                description="Mobile phone number"
-              >
-                <Input
-                  value={formData.mobile}
-                  onChange={(e) => setFormData({...formData, mobile: e.target.value})}
-                />
-              </AccessibleFormField>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="mobile_phone">Mobile Phone</Label>
+              <Input
+                id="mobile_phone"
+                value={formData.mobile_phone}
+                onChange={(e) => setFormData({...formData, mobile_phone: e.target.value})}
+                placeholder="Enter mobile phone number"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="account_name">Account Name</Label>
+              <Input
+                id="account_name"
+                value={formData.account_name}
+                onChange={(e) => setFormData({...formData, account_name: e.target.value})}
+                placeholder="Enter account name"
+              />
             </div>
 
             <div className={`grid grid-cols-2 gap-4 ${isMobile ? 'grid-cols-1' : ''}`}>
-              <AccessibleFormField
-                label="Job Title"
-                description="Contact's position or role"
-              >
+              <div className="space-y-2">
+                <Label htmlFor="department">Department</Label>
                 <Input
-                  value={formData.job_title}
-                  onChange={(e) => setFormData({...formData, job_title: e.target.value})}
-                />
-              </AccessibleFormField>
-              <AccessibleFormField
-                label="Department"
-                description="Department or division"
-              >
-                <Input
+                  id="department"
                   value={formData.department}
                   onChange={(e) => setFormData({...formData, department: e.target.value})}
+                  placeholder="Enter department"
                 />
-              </AccessibleFormField>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="territory">Territory</Label>
+                <Input
+                  id="territory"
+                  value={formData.territory}
+                  onChange={(e) => setFormData({...formData, territory: e.target.value})}
+                  placeholder="Enter territory"
+                />
+              </div>
             </div>
 
-            <AccessibleFormField
-              label="LinkedIn URL"
-              description="Professional LinkedIn profile URL"
-            >
+            <div className={`grid grid-cols-2 gap-4 ${isMobile ? 'grid-cols-1' : ''}`}>
+              <div className="space-y-2">
+                <Label htmlFor="assistant_name">Assistant Name</Label>
+                <Input
+                  id="assistant_name"
+                  value={formData.assistant_name}
+                  onChange={(e) => setFormData({...formData, assistant_name: e.target.value})}
+                  placeholder="Enter assistant name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="currency_code">Currency Code</Label>
+                <Input
+                  id="currency_code"
+                  value={formData.currency_code}
+                  onChange={(e) => setFormData({...formData, currency_code: e.target.value})}
+                  placeholder="e.g., USD, EUR"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="mailing_street">Mailing Street</Label>
               <Input
-                value={formData.linkedin_url}
-                onChange={(e) => setFormData({...formData, linkedin_url: e.target.value})}
-                placeholder="https://linkedin.com/in/..."
-              />
-            </AccessibleFormField>
-
-            <div className="grid grid-cols-3 gap-4">
-              <AccessibleFormField
-                label="Address"
-                description="Street address"
-                className="col-span-3"
-              >
-                <Input
-                  value={formData.address}
-                  onChange={(e) => setFormData({...formData, address: e.target.value})}
-                />
-              </AccessibleFormField>
-              <AccessibleFormField
-                label="City"
-                description="City or town"
-              >
-                <Input
-                  value={formData.city}
-                  onChange={(e) => setFormData({...formData, city: e.target.value})}
-                />
-              </AccessibleFormField>
-              <AccessibleFormField
-                label="Country"
-                description="Country or region"
-                className="col-span-2"
-              >
-                <Input
-                  value={formData.country}
-                  onChange={(e) => setFormData({...formData, country: e.target.value})}
-                />
-              </AccessibleFormField>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Assignments & Product Lines</Label>
-              <AssignmentManager
-                assignedUsers={formData.assigned_users}
-                productLines={formData.product_lines}
-                allUsers={users}
-                allProductLines={productLines}
-                onUpdate={(assignments) => setFormData({
-                  ...formData,
-                  assigned_users: assignments.assigned_users,
-                  product_lines: assignments.product_lines,
-                })}
+                id="mailing_street"
+                value={formData.mailing_street}
+                onChange={(e) => setFormData({...formData, mailing_street: e.target.value})}
+                placeholder="Enter street address"
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => setFormData({...formData, notes: e.target.value})}
-                rows={3}
-              />
+            <div className={`grid grid-cols-2 gap-4 ${isMobile ? 'grid-cols-1' : ''}`}>
+              <div className="space-y-2">
+                <Label htmlFor="mailing_city">Mailing City</Label>
+                <Input
+                  id="mailing_city"
+                  value={formData.mailing_city}
+                  onChange={(e) => setFormData({...formData, mailing_city: e.target.value})}
+                  placeholder="Enter city"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="mailing_state">Mailing State</Label>
+                <Input
+                  id="mailing_state"
+                  value={formData.mailing_state}
+                  onChange={(e) => setFormData({...formData, mailing_state: e.target.value})}
+                  placeholder="Enter state"
+                />
+              </div>
+            </div>
+
+            <div className={`grid grid-cols-2 gap-4 ${isMobile ? 'grid-cols-1' : ''}`}>
+              <div className="space-y-2">
+                <Label htmlFor="mailing_zip">Mailing Zip</Label>
+                <Input
+                  id="mailing_zip"
+                  value={formData.mailing_zip}
+                  onChange={(e) => setFormData({...formData, mailing_zip: e.target.value})}
+                  placeholder="Enter zip code"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="mailing_country">Mailing Country</Label>
+                <Input
+                  id="mailing_country"
+                  value={formData.mailing_country}
+                  onChange={(e) => setFormData({...formData, mailing_country: e.target.value})}
+                  placeholder="Enter country"
+                />
+              </div>
             </div>
 
             <DialogFooter>
@@ -1177,7 +1172,6 @@ export default function Contacts() {
               <Button
                 type="submit"
                 className="bg-gradient-to-r from-purple-600 to-pink-600"
-                disabled={accounts.length === 0}
               >
                 {editingContact ? 'Update' : 'Create'} Contact
               </Button>

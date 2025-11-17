@@ -371,15 +371,19 @@ export const AnimatedCounter = ({
   suffix = '',
   ...props 
 }) => {
-  const [count, setCount] = useState(from);
+  // Safely parse and validate inputs
+  const safeFrom = isNaN(Number(from)) ? 0 : Number(from);
+  const safeTo = isNaN(Number(to)) ? 0 : Number(to);
+  
+  const [count, setCount] = useState(safeFrom);
   const nodeRef = useRef();
 
   useEffect(() => {
     const node = nodeRef.current;
-    const controls = { value: from };
+    const controls = { value: safeFrom };
     
     const animation = {
-      value: to,
+      value: safeTo,
       duration: duration * 1000,
       ease: 'easeOut',
       onUpdate: () => {
@@ -394,17 +398,28 @@ export const AnimatedCounter = ({
       const progress = Math.min((currentTime - startTime) / (duration * 1000), 1);
       
       const easeOut = 1 - Math.pow(1 - progress, 3);
-      const currentValue = from + (to - from) * easeOut;
+      const currentValue = safeFrom + (safeTo - safeFrom) * easeOut;
       
-      setCount(Math.floor(currentValue));
+      const floorValue = Math.floor(currentValue);
+      setCount(isNaN(floorValue) ? 0 : floorValue);
       
       if (progress < 1) {
         requestAnimationFrame(animate);
+      } else {
+        // Ensure final value is set correctly
+        const finalValue = Math.floor(safeTo);
+        setCount(isNaN(finalValue) ? 0 : finalValue);
       }
     };
     
     requestAnimationFrame(animate);
-  }, [from, to, duration]);
+  }, [safeFrom, safeTo, duration]);
+
+  // Safely format the count
+  const displayCount = isNaN(count) ? 0 : count;
+  const formattedCount = typeof displayCount === 'number' 
+    ? displayCount.toLocaleString() 
+    : String(displayCount);
 
   return (
     <motion.span
@@ -415,7 +430,7 @@ export const AnimatedCounter = ({
       transition={{ duration: 0.5 }}
       {...props}
     >
-      {prefix}{count.toLocaleString()}{suffix}
+      {prefix}{formattedCount}{suffix}
     </motion.span>
   );
 };

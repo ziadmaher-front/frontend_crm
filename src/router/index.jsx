@@ -2,7 +2,7 @@
 import React, { Suspense, lazy } from 'react';
 import { createBrowserRouter, RouterProvider, Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore } from '@/stores';
-import Layout from '@/components/Layout';
+import Layout from '@/pages/Layout';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
@@ -39,7 +39,8 @@ const AISystemMonitor = lazy(() => import('@/components/AISystemMonitor'));
 const LeadDetails = lazy(() => import('@/pages/LeadDetails'));
 const ContactDetails = lazy(() => import('@/pages/ContactDetails'));
 const AccountDetails = lazy(() => import('@/pages/AccountDetails'));
-const DealDetails = lazy(() => import('@/pages/DealDetails'));
+// DealDetails doesn't exist yet - using Deals page for now
+// const DealDetails = lazy(() => import('@/pages/DealDetails'));
 
 // Auth pages
 const Login = lazy(() => import('@/pages/auth/Login'));
@@ -59,9 +60,20 @@ const PageLoader = () => (
 
 // Protected Route Component
 const ProtectedRoute = ({ children, requiredPermission = null }) => {
-  const { isAuthenticated, hasPermission } = useAuthStore();
+  const { isAuthenticated, hasPermission, user, token } = useAuthStore();
+  
+  // Also check localStorage for token (in case state hasn't updated yet)
+  const storedToken = localStorage.getItem('authToken');
 
-  if (!isAuthenticated) {
+  // If not authenticated or no user, redirect to login
+  // Check both state token and localStorage token
+  if (!isAuthenticated || !user || (!token && !storedToken)) {
+    console.log('ProtectedRoute: Not authenticated, redirecting to login', {
+      isAuthenticated,
+      hasUser: !!user,
+      hasToken: !!token,
+      hasStoredToken: !!storedToken,
+    });
     return <Navigate to="/auth/login" replace />;
   }
 
@@ -83,17 +95,28 @@ const AuthenticatedLayout = () => (
   </ProtectedRoute>
 );
 
-// Public layout for auth pages
-const PublicLayout = () => (
-  <div className="min-h-screen bg-gray-50">
-    <Suspense fallback={<PageLoader />}>
-      <Outlet />
-    </Suspense>
-  </div>
-);
+// Public layout for auth pages (redirect if already authenticated)
+const PublicLayout = () => {
+  const { isAuthenticated, user, token } = useAuthStore();
+  const storedToken = localStorage.getItem('authToken');
+  
+  // Only redirect if truly authenticated (has user and token in state or localStorage)
+  if (isAuthenticated && user && (token || storedToken)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Suspense fallback={<PageLoader />}>
+        <Outlet />
+      </Suspense>
+    </div>
+  );
+};
 
 // Route configuration
 const router = createBrowserRouter([
+  // Protected routes - require authentication
   {
     path: '/',
     element: <AuthenticatedLayout />,
@@ -105,7 +128,11 @@ const router = createBrowserRouter([
       },
       {
         path: 'dashboard',
-        element: <Dashboard />,
+        element: (
+          <ErrorBoundary>
+            <Dashboard />
+          </ErrorBoundary>
+        ),
       },
       {
         path: 'optimized-dashboard',
@@ -154,16 +181,12 @@ const router = createBrowserRouter([
       },
       {
         path: 'deals',
-        children: [
-          {
-            index: true,
-            element: <Deals />,
-          },
-          {
-            path: ':id',
-            element: <DealDetails />,
-          },
-        ],
+        element: <Deals />,
+        // DealDetails page doesn't exist yet - using Deals page for detail view
+        // {
+        //   path: ':id',
+        //   element: <DealDetails />,
+        // },
       },
       
       // Activity Management

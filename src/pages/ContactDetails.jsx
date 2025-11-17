@@ -13,7 +13,6 @@ import {
   Phone, 
   Building2, 
   Smartphone,
-  Linkedin,
   MapPin,
   TrendingUp,
   FileText,
@@ -21,8 +20,7 @@ import {
   MessageSquare, // Added for WhatsApp
   Calendar // Added for CalendarScheduler
 } from "lucide-react";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import { PageSkeleton } from "@/components/ui/loading-states";
 import { format } from "date-fns";
 import ActivityTimeline from "../components/ActivityTimeline";
@@ -34,28 +32,19 @@ import ClickToCall from "../components/ClickToCall"; // New import
 import WhatsAppSender from "../components/WhatsAppSender"; // New import
 
 export default function ContactDetails() {
+  const { id: contactId } = useParams();
+  const navigate = useNavigate();
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [showCalendarDialog, setShowCalendarDialog] = useState(false); // New state
   const [showWhatsAppDialog, setShowWhatsAppDialog] = useState(false); // New state
-  const urlParams = new URLSearchParams(window.location.search);
-  const contactId = urlParams.get('id');
 
   const { data: contact, isLoading: contactLoading } = useQuery({
     queryKey: ['contact', contactId],
     queryFn: async () => {
-      const contacts = await base44.entities.Contact.list();
-      return contacts.find(c => c.id === contactId);
+      if (!contactId) return null;
+      return await base44.entities.Contact.get(contactId);
     },
     enabled: !!contactId,
-  });
-
-  const { data: account, isLoading: accountLoading } = useQuery({
-    queryKey: ['account', contact?.account_id],
-    queryFn: async () => {
-      const accounts = await base44.entities.Account.list();
-      return accounts.find(a => a.id === contact.account_id);
-    },
-    enabled: !!contact?.account_id,
   });
 
   const { data: activities = [], isLoading: activitiesLoading } = useQuery({
@@ -109,7 +98,7 @@ export default function ContactDetails() {
   });
 
   // Combined loading state
-  const isLoading = contactLoading || accountLoading || activitiesLoading || tasksLoading || communicationsLoading || documentsLoading || dealsLoading || usersLoading;
+  const isLoading = contactLoading || activitiesLoading || tasksLoading || communicationsLoading || documentsLoading || dealsLoading || usersLoading;
 
   if (isLoading) {
     return <PageSkeleton />;
@@ -119,11 +108,9 @@ export default function ContactDetails() {
     return (
       <div className="p-6 lg:p-8">
         <div className="flex items-center gap-4 mb-6">
-          <Link to={createPageUrl('Contacts')}>
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-          </Link>
+          <Button variant="ghost" size="icon" onClick={() => navigate('/contacts')}>
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
           <h1 className="text-2xl font-bold">Contact not found</h1>
         </div>
       </div>
@@ -141,11 +128,9 @@ export default function ContactDetails() {
         <div className="p-6 lg:p-8">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Link to={createPageUrl('Contacts')}>
-                <Button variant="ghost" size="icon" className="hover:bg-gray-100">
-                  <ArrowLeft className="w-5 h-5" />
-                </Button>
-              </Link>
+              <Button variant="ghost" size="icon" className="hover:bg-gray-100" onClick={() => navigate('/contacts')}>
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-2xl shadow-lg">
                   {contact.first_name?.[0]}{contact.last_name?.[0]}
@@ -159,8 +144,8 @@ export default function ContactDetails() {
                       {contact.serial_number}
                     </Badge>
                   )}
-                  {contact.job_title && account && (
-                    <p className="text-gray-600 mt-1">{contact.job_title} at {account.company_name}</p>
+                  {contact.account_name && (
+                    <p className="text-gray-600 mt-1">{contact.account_name}</p>
                   )}
                 </div>
               </div>
@@ -168,7 +153,7 @@ export default function ContactDetails() {
             <div className="flex items-center gap-3 flex-wrap"> {/* Added flex-wrap */}
               <QuickActions relatedTo={{ type: 'Contact', id: contactId }} />
               <ClickToCall 
-                phoneNumber={contact.phone || contact.mobile} 
+                phoneNumber={contact.phone || contact.mobile_phone} 
                 recipientName={`${contact.first_name} ${contact.last_name}`}
                 relatedTo={{ type: 'Contact', id: contactId }}
               />
@@ -202,7 +187,6 @@ export default function ContactDetails() {
               entityType="Contact"
               data={{ 
                 contacts: [contact], 
-                account: account,
                 deals: deals,
                 activities: activities,
                 tasks: tasks
@@ -256,7 +240,7 @@ export default function ContactDetails() {
               <TabsContent value="deals" className="mt-6">
                 <div className="space-y-3">
                   {deals.map((deal) => (
-                    <Link to={createPageUrl('DealDetails', deal.id)} key={deal.id}>
+                    <Link to={`/deals/${deal.id}`} key={deal.id}>
                       <Card className="border-none shadow-md hover:shadow-lg transition-all cursor-pointer">
                         <CardContent className="p-4">
                           <div className="flex items-start justify-between">
@@ -352,106 +336,112 @@ export default function ContactDetails() {
               <CardHeader>
                 <CardTitle className="text-lg">Contact Information</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {contact.email && (
-                  <div className="flex items-center gap-3">
-                    <Mail className="w-5 h-5 text-gray-400" />
-                    <div className="flex-1">
-                      <p className="text-xs text-gray-500">Email</p>
-                      <p className="text-sm font-medium">{contact.email}</p>
-                    </div>
+              <CardContent className="grid grid-cols-2 gap-6">
+                <div>
+                  <p className="text-sm text-gray-500 mb-1">Email</p>
+                  <p className="font-medium flex items-center gap-2">
+                    <Mail className="w-4 h-4 text-gray-400" />
+                    {contact.email || '-'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 mb-1">Phone</p>
+                  <p className="font-medium flex items-center gap-2">
+                    <Phone className="w-4 h-4 text-gray-400" />
+                    {contact.phone || '-'}
+                  </p>
+                </div>
+                {contact.mobile_phone && (
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Mobile Phone</p>
+                    <p className="font-medium flex items-center gap-2">
+                      <Smartphone className="w-4 h-4 text-gray-400" />
+                      {contact.mobile_phone}
+                    </p>
                   </div>
                 )}
-                {contact.phone && (
-                  <div className="flex items-center gap-3">
-                    <Phone className="w-5 h-5 text-gray-400" />
-                    <div className="flex-1">
-                      <p className="text-xs text-gray-500">Phone</p>
-                      <p className="text-sm font-medium">{contact.phone}</p>
-                    </div>
+                {contact.account_name && (
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Account Name</p>
+                    <p className="font-medium flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-gray-400" />
+                      {contact.account_name}
+                    </p>
                   </div>
                 )}
-                {contact.mobile && (
-                  <div className="flex items-center gap-3">
-                    <Smartphone className="w-5 h-5 text-gray-400" />
-                    <div className="flex-1">
-                      <p className="text-xs text-gray-500">Mobile</p>
-                      <p className="text-sm font-medium">{contact.mobile}</p>
-                    </div>
+                {contact.department && (
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Department</p>
+                    <p className="font-medium">{contact.department}</p>
                   </div>
                 )}
-                {contact.linkedin_url && (
-                  <div className="flex items-center gap-3">
-                    <Linkedin className="w-5 h-5 text-gray-400" />
-                    <div className="flex-1">
-                      <p className="text-xs text-gray-500">LinkedIn</p>
-                      <a href={contact.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-blue-600 hover:text-blue-700">
-                        View Profile
-                      </a>
-                    </div>
+                {contact.territory && (
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Territory</p>
+                    <p className="font-medium">{contact.territory}</p>
+                  </div>
+                )}
+                {contact.assistant_name && (
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Assistant Name</p>
+                    <p className="font-medium">{contact.assistant_name}</p>
+                  </div>
+                )}
+                {contact.currency_code && (
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Currency Code</p>
+                    <p className="font-medium">{contact.currency_code}</p>
+                  </div>
+                )}
+                {contact.serial_number && (
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Serial Number</p>
+                    <p className="font-medium font-mono">{contact.serial_number}</p>
                   </div>
                 )}
               </CardContent>
             </Card>
 
-            {account && (
+            {(contact.mailing_street || contact.mailing_city || contact.mailing_state || contact.mailing_zip || contact.mailing_country) && (
               <Card className="border-none shadow-lg">
                 <CardHeader>
-                  <CardTitle className="text-lg">Company</CardTitle>
+                  <CardTitle className="text-lg">Mailing Address</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <Building2 className="w-8 h-8 text-emerald-500" />
+                  {contact.mailing_street && (
                     <div>
-                      <p className="font-semibold">{account.company_name}</p>
-                      <p className="text-xs text-gray-500">{account.industry}</p>
-                    </div>
-                  </div>
-                  {contact.job_title && (
-                    <div className="pt-3 border-t">
-                      <p className="text-xs text-gray-500">Position</p>
-                      <p className="text-sm font-medium">{contact.job_title}</p>
-                      {contact.department && (
-                        <p className="text-xs text-gray-500 mt-1">{contact.department}</p>
-                      )}
+                      <p className="text-xs text-gray-500">Street</p>
+                      <p className="text-sm font-medium flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-gray-400" />
+                        {contact.mailing_street}
+                      </p>
                     </div>
                   )}
-                </CardContent>
-              </Card>
-            )}
-
-            {contact.assigned_users?.length > 0 && (
-              <Card className="border-none shadow-lg">
-                <CardHeader>
-                  <CardTitle className="text-lg">Assigned Team</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {contact.assigned_users.map((email) => (
-                    <div key={email} className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-sm font-semibold">
-                        {getUserName(email)[0]}
-                      </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    {contact.mailing_city && (
                       <div>
-                        <p className="text-sm font-medium">{getUserName(email)}</p>
-                        <p className="text-xs text-gray-500">{email}</p>
+                        <p className="text-xs text-gray-500">City</p>
+                        <p className="text-sm font-medium">{contact.mailing_city}</p>
                       </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-
-            {(contact.address || contact.city || contact.country) && (
-              <Card className="border-none shadow-lg">
-                <CardHeader>
-                  <CardTitle className="text-lg">Location</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-start gap-3">
-                    <MapPin className="w-5 h-5 text-gray-400 mt-1" />
-                    <p className="text-sm text-gray-700">
-                      {[contact.address, contact.city, contact.country].filter(Boolean).join(', ')}
-                    </p>
+                    )}
+                    {contact.mailing_state && (
+                      <div>
+                        <p className="text-xs text-gray-500">State</p>
+                        <p className="text-sm font-medium">{contact.mailing_state}</p>
+                      </div>
+                    )}
+                    {contact.mailing_zip && (
+                      <div>
+                        <p className="text-xs text-gray-500">Zip Code</p>
+                        <p className="text-sm font-medium">{contact.mailing_zip}</p>
+                      </div>
+                    )}
+                    {contact.mailing_country && (
+                      <div>
+                        <p className="text-xs text-gray-500">Country</p>
+                        <p className="text-sm font-medium">{contact.mailing_country}</p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
