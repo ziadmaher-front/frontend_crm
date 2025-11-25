@@ -1,0 +1,6 @@
+name = "medsol-crm"
+compatibility_date = "2025-11-25"
+
+[site]
+bucket = "./dist"
+
