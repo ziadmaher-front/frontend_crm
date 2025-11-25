@@ -1,6 +1,5 @@
 name = "medsolcrm"
 compatibility_date = "2025-11-25"
-main = "workers-site/index.js"
 
 [assets]
 directory = "./dist"
