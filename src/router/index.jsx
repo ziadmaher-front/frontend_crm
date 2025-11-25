@@ -214,6 +214,14 @@ const router = createBrowserRouter([
         ],
       },
       {
+        path: 'product-lines',
+        element: <ProductLines />,
+      },
+      {
+        path: 'productlines',
+        element: <ProductLines />,
+      },
+      {
         path: 'quotes',
         element: <Quotes />,
       },

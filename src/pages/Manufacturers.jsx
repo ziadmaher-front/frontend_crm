@@ -54,22 +54,9 @@ export default function Manufacturers() {
   const [selectedManufacturer, setSelectedManufacturer] = useState(null);
   const [editingContact, setEditingContact] = useState(null);
   const [formData, setFormData] = useState({
-    company_name: "",
-    contact_person: "",
-    email: "",
-    phone: "",
-    website: "",
-    address: "",
-    city: "",
-    country: "",
-    product_line_ids: [],
-    payment_terms: "Net 30",
-    delivery_lead_time_days: 0,
-    minimum_order_value: 0,
-    currency: "USD",
-    is_active: true,
-    rating: 0,
-    notes: "",
+    company_name: "", // Required - maps to companyName in backend
+    product_line_ids: [], // Optional - maps to productLineIds in backend
+    is_active: true, // Optional - maps to isActive in backend, default: true
   });
   const [contactFormData, setContactFormData] = useState({
     manufacturer_id: "",
@@ -168,12 +155,10 @@ export default function Manufacturers() {
   };
 
   const createMutation = useMutation({
-    mutationFn: async (data) => {
-      const serialNumber = await generateSerialNumber();
-      return base44.entities.Manufacturer.create({
-        ...data,
-        serial_number: serialNumber
-      });
+    mutationFn: (data) => {
+      // Backend only accepts: companyName, productLineIds, isActive
+      // Serial number is not part of the backend structure
+      return base44.entities.Manufacturer.create(data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['manufacturers'] });
@@ -222,21 +207,8 @@ export default function Manufacturers() {
   const resetForm = () => {
     setFormData({
       company_name: "",
-      contact_person: "",
-      email: "",
-      phone: "",
-      website: "",
-      address: "",
-      city: "",
-      country: "",
       product_line_ids: [],
-      payment_terms: "Net 30",
-      delivery_lead_time_days: 0,
-      minimum_order_value: 0,
-      currency: "USD",
       is_active: true,
-      rating: 0,
-      notes: "",
     });
   };
 
@@ -276,22 +248,9 @@ export default function Manufacturers() {
   const handleEdit = (manufacturer) => {
     setEditingManufacturer(manufacturer);
     setFormData({
-      company_name: manufacturer.company_name || "",
-      contact_person: manufacturer.contact_person || "",
-      email: manufacturer.email || "",
-      phone: manufacturer.phone || "",
-      website: manufacturer.website || "",
-      address: manufacturer.address || "",
-      city: manufacturer.city || "",
-      country: manufacturer.country || "",
-      product_line_ids: manufacturer.product_line_ids || [],
-      payment_terms: manufacturer.payment_terms || "Net 30",
-      delivery_lead_time_days: manufacturer.delivery_lead_time_days || 0,
-      minimum_order_value: manufacturer.minimum_order_value || 0,
-      currency: manufacturer.currency || "USD",
-      is_active: manufacturer.is_active !== undefined ? manufacturer.is_active : true,
-      rating: manufacturer.rating || 0,
-      notes: manufacturer.notes || "",
+      company_name: manufacturer.company_name || manufacturer.companyName || "",
+      product_line_ids: manufacturer.product_line_ids || manufacturer.productLineIds || [],
+      is_active: manufacturer.is_active !== undefined ? manufacturer.is_active : (manufacturer.isActive !== undefined ? manufacturer.isActive : true),
     });
     setShowDialog(true);
   };
@@ -333,8 +292,25 @@ export default function Manufacturers() {
   );
 
   const getProductLineName = (id) => {
+    if (!id) return null;
     const pl = productLines.find(p => p.id === id);
     return pl?.name || null;
+  };
+
+  const getProductLineNames = (manufacturer) => {
+    // Check for product_lines relation first (from backend), then fall back to product_line_ids lookup
+    if (manufacturer.product_lines && Array.isArray(manufacturer.product_lines)) {
+      return manufacturer.product_lines.map(pl => pl.name || pl);
+    }
+    if (manufacturer.productLines && Array.isArray(manufacturer.productLines)) {
+      return manufacturer.productLines.map(pl => pl.name || pl);
+    }
+    if (manufacturer.product_line_ids && Array.isArray(manufacturer.product_line_ids)) {
+      return manufacturer.product_line_ids
+        .map(id => getProductLineName(id))
+        .filter(Boolean);
+    }
+    return [];
   };
 
   const getManufacturerContacts = (manufacturerId) => {
@@ -471,11 +447,11 @@ export default function Manufacturers() {
                     <div className="flex justify-between items-start">
                       <div className="flex items-start gap-3 flex-1">
                         <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center text-white font-bold text-xl shadow-md">
-                          {manufacturer.company_name?.[0]}
+                          {(manufacturer.company_name || manufacturer.companyName)?.[0]}
                         </div>
                         <div className="flex-1">
                           <CardTitle className="text-lg leading-tight">
-                            {manufacturer.company_name}
+                            {manufacturer.company_name || manufacturer.companyName}
                           </CardTitle>
                           {manufacturer.serial_number && (
                             <Badge variant="outline" className="mt-1 text-xs font-mono">
@@ -552,24 +528,27 @@ export default function Manufacturers() {
                       </div>
                     )}
 
-                    {manufacturer.product_line_ids?.length > 0 && (
-                      <div className="pt-2 border-t">
-                        <p className="text-xs text-gray-500 mb-1">Product Lines:</p>
-                        <div className="flex flex-wrap gap-1">
-                          {manufacturer.product_line_ids.slice(0, 2).map((id) => (
-                            <Badge key={id} className="bg-indigo-100 text-indigo-800 text-xs">
-                              <Briefcase className="w-3 h-3 mr-1" />
-                              {getProductLineName(id)}
-                            </Badge>
-                          ))}
-                          {manufacturer.product_line_ids.length > 2 && (
-                            <Badge className="bg-indigo-100 text-indigo-800 text-xs">
-                              +{manufacturer.product_line_ids.length - 2}
-                            </Badge>
-                          )}
+                    {(() => {
+                      const productLineNames = getProductLineNames(manufacturer);
+                      return productLineNames.length > 0 && (
+                        <div className="pt-2 border-t">
+                          <p className="text-xs text-gray-500 mb-1">Product Lines:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {productLineNames.slice(0, 2).map((name, index) => (
+                              <Badge key={index} className="bg-indigo-100 text-indigo-800 text-xs">
+                                <Briefcase className="w-3 h-3 mr-1" />
+                                {name}
+                              </Badge>
+                            ))}
+                            {productLineNames.length > 2 && (
+                              <Badge className="bg-indigo-100 text-indigo-800 text-xs">
+                                +{productLineNames.length - 2}
+                              </Badge>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     <Button
                       variant="outline"
@@ -605,180 +584,38 @@ export default function Manufacturers() {
             <DialogTitle>{editingManufacturer ? 'Edit Manufacturer' : 'Add New Manufacturer'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="company_name">Company Name *</Label>
-                <Input
-                  id="company_name"
-                  value={formData.company_name}
-                  onChange={(e) => setFormData({...formData, company_name: e.target.value})}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="contact_person">Contact Person</Label>
-                <Input
-                  id="contact_person"
-                  value={formData.contact_person}
-                  onChange={(e) => setFormData({...formData, contact_person: e.target.value})}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email *</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
-                <Input
-                  id="phone"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                />
-              </div>
-            </div>
-
             <div className="space-y-2">
-              <Label htmlFor="website">Website</Label>
+              <Label htmlFor="company_name">Company Name *</Label>
               <Input
-                id="website"
-                value={formData.website}
-                onChange={(e) => setFormData({...formData, website: e.target.value})}
-                placeholder="company.com"
+                id="company_name"
+                value={formData.company_name}
+                onChange={(e) => setFormData({...formData, company_name: e.target.value})}
+                placeholder="Enter company name"
+                required
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2 col-span-3">
-                <Label htmlFor="address">Address</Label>
-                <Input
-                  id="address"
-                  value={formData.address}
-                  onChange={(e) => setFormData({...formData, address: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="city">City</Label>
-                <Input
-                  id="city"
-                  value={formData.city}
-                  onChange={(e) => setFormData({...formData, city: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2 col-span-2">
-                <Label htmlFor="country">Country</Label>
-                <Input
-                  id="country"
-                  value={formData.country}
-                  onChange={(e) => setFormData({...formData, country: e.target.value})}
-                />
-              </div>
-            </div>
-
             <div className="space-y-2">
-              <Label>Product Lines</Label>
+              <Label>Product Lines (Optional)</Label>
               <div className="border rounded-lg p-3 max-h-40 overflow-y-auto">
-                {productLines.map((pl) => (
-                  <div key={pl.id} className="flex items-center space-x-2 py-1">
-                    <input
-                      type="checkbox"
-                      id={`pl-${pl.id}`}
-                      checked={formData.product_line_ids.includes(pl.id)}
-                      onChange={() => handleProductLineToggle(pl.id)}
-                      className="w-4 h-4 text-orange-600 rounded"
-                    />
-                    <Label htmlFor={`pl-${pl.id}`} className="cursor-pointer">
-                      {pl.name}
-                    </Label>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="payment_terms">Payment Terms</Label>
-                <Select
-                  value={formData.payment_terms}
-                  onValueChange={(value) => setFormData({...formData, payment_terms: value})}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Net 15">Net 15</SelectItem>
-                    <SelectItem value="Net 30">Net 30</SelectItem>
-                    <SelectItem value="Net 60">Net 60</SelectItem>
-                    <SelectItem value="Net 90">Net 90</SelectItem>
-                    <SelectItem value="COD">COD</SelectItem>
-                    <SelectItem value="Prepaid">Prepaid</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="currency">Currency</Label>
-                <Select
-                  value={formData.currency}
-                  onValueChange={(value) => setFormData({...formData, currency: value})}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="USD">USD</SelectItem>
-                    <SelectItem value="EGP">EGP</SelectItem>
-                    <SelectItem value="AED">AED</SelectItem>
-                    <SelectItem value="SAR">SAR</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="delivery_lead_time_days">Lead Time (days)</Label>
-                <Input
-                  id="delivery_lead_time_days"
-                  type="number"
-                  value={formData.delivery_lead_time_days}
-                  onChange={(e) => setFormData({...formData, delivery_lead_time_days: parseInt(e.target.value) || 0})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="minimum_order_value">Min Order Value</Label>
-                <Input
-                  id="minimum_order_value"
-                  type="number"
-                  value={formData.minimum_order_value}
-                  onChange={(e) => setFormData({...formData, minimum_order_value: parseFloat(e.target.value) || 0})}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="rating">Rating (0-5)</Label>
-              <input
-                type="range"
-                id="rating"
-                min="0"
-                max="5"
-                step="0.5"
-                value={formData.rating}
-                onChange={(e) => setFormData({...formData, rating: parseFloat(e.target.value)})}
-                className="w-full"
-              />
-              <div className="flex justify-between text-xs text-gray-500">
-                <span>Poor (0)</span>
-                <span className="font-semibold text-gray-700">{formData.rating}</span>
-                <span>Excellent (5)</span>
+                {productLines.length === 0 ? (
+                  <p className="text-sm text-gray-500">No product lines available. Please create product lines first.</p>
+                ) : (
+                  productLines.map((pl) => (
+                    <div key={pl.id} className="flex items-center space-x-2 py-1">
+                      <input
+                        type="checkbox"
+                        id={`pl-${pl.id}`}
+                        checked={formData.product_line_ids.includes(pl.id)}
+                        onChange={() => handleProductLineToggle(pl.id)}
+                        className="w-4 h-4 text-orange-600 rounded"
+                      />
+                      <Label htmlFor={`pl-${pl.id}`} className="cursor-pointer">
+                        {pl.name}
+                      </Label>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
@@ -789,16 +626,6 @@ export default function Manufacturers() {
                 onCheckedChange={(checked) => setFormData({...formData, is_active: checked})}
               />
               <Label htmlFor="is_active">Active Manufacturer</Label>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => setFormData({...formData, notes: e.target.value})}
-                rows={3}
-              />
             </div>
 
             <DialogFooter>
@@ -819,7 +646,7 @@ export default function Manufacturers() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Factory className="w-6 h-6 text-orange-500" />
-              {selectedManufacturer?.company_name}
+              {selectedManufacturer?.company_name || selectedManufacturer?.companyName}
             </DialogTitle>
           </DialogHeader>
 

@@ -147,13 +147,40 @@ export default function Products() {
   );
 
   const getProductLineName = (id) => {
+    if (!id) return null;
     const pl = productLines.find(p => p.id === id);
     return pl?.name || null;
   };
 
+  const getProductLineFromProduct = (product) => {
+    // Check for product_line relation first (from backend), then fall back to product_line_id lookup
+    if (product.product_line) {
+      return product.product_line.name || product.product_line;
+    }
+    if (product.productLine) {
+      return product.productLine.name || product.productLine;
+    }
+    if (product.product_line_id) {
+      return getProductLineName(product.product_line_id);
+    }
+    return null;
+  };
+
   const getManufacturerName = (id) => {
+    if (!id) return null;
     const manufacturer = manufacturers.find(m => m.id === id);
     return manufacturer?.company_name || null;
+  };
+
+  const getManufacturerFromProduct = (product) => {
+    // Check for manufacturer relation first (from backend), then fall back to manufacturer_id lookup
+    if (product.manufacturer) {
+      return product.manufacturer.company_name || product.manufacturer.name || product.manufacturer;
+    }
+    if (product.manufacturer_id) {
+      return getManufacturerName(product.manufacturer_id);
+    }
+    return null;
   };
 
   const totalValue = products.reduce((sum, p) => sum + ((p.unit_price || 0) * (p.stock_quantity || 0)), 0);
@@ -292,16 +319,16 @@ export default function Products() {
                       {product.category && (
                         <Badge variant="outline">{product.category}</Badge>
                       )}
-                      {product.product_line_id && getProductLineName(product.product_line_id) && (
+                      {getProductLineFromProduct(product) && (
                         <Badge className="bg-indigo-100 text-indigo-800">
                           <Briefcase className="w-3 h-3 mr-1" />
-                          {getProductLineName(product.product_line_id)}
+                          {getProductLineFromProduct(product)}
                         </Badge>
                       )}
-                      {product.manufacturer_id && getManufacturerName(product.manufacturer_id) && (
+                      {getManufacturerFromProduct(product) && (
                         <Badge className="bg-blue-100 text-blue-800">
                           <Briefcase className="w-3 h-3 mr-1" />
-                          {getManufacturerName(product.manufacturer_id)}
+                          {getManufacturerFromProduct(product)}
                         </Badge>
                       )}
                       {!product.is_active && (

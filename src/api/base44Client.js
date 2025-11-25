@@ -1209,6 +1209,1367 @@ class UserEntity {
   }
 }
 
+// Real API RFQ Entity
+class RFQEntity {
+  async list(sort = '', limit = null) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        console.warn('No authentication token found, falling back to mock data');
+        return [];
+      }
+
+      const url = `${API_BASE_URL}/rfqs`;
+      console.log('Fetching RFQs from:', url);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to fetch RFQs: ${response.status}`;
+        console.error('Failed to fetch RFQs:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      let rfqs = await response.json();
+      
+      // Handle array or object response
+      if (!Array.isArray(rfqs)) {
+        rfqs = rfqs.data || rfqs.rfqs || [];
+      }
+
+      // Apply sorting if needed
+      if (sort.startsWith('-')) {
+        const field = sort.substring(1);
+        rfqs.sort((a, b) => {
+          const aVal = a[field] || '';
+          const bVal = b[field] || '';
+          if (field.includes('date') || field.includes('Date')) {
+            return new Date(bVal) - new Date(aVal);
+          }
+          return bVal > aVal ? 1 : -1;
+        });
+      } else if (sort) {
+        const field = sort;
+        rfqs.sort((a, b) => {
+          const aVal = a[field] || '';
+          const bVal = b[field] || '';
+          if (field.includes('date') || field.includes('Date')) {
+            return new Date(aVal) - new Date(bVal);
+          }
+          return aVal > bVal ? 1 : -1;
+        });
+      }
+
+      // Apply limit if specified
+      if (limit) {
+        rfqs = rfqs.slice(0, limit);
+      }
+
+      console.log(`Fetched ${rfqs.length} RFQs from backend`);
+      return rfqs;
+    } catch (error) {
+      console.error('Error fetching RFQs:', error);
+      return [];
+    }
+  }
+
+  async get(id) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      const url = `${API_BASE_URL}/rfqs/${id}`;
+      console.log('Fetching RFQ from:', url);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          const error = new Error('RFQ not found');
+          error.status = 404;
+          throw error;
+        }
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to fetch RFQ: ${response.status}`;
+        throw new Error(errorMessage);
+      }
+
+      const rfq = await response.json();
+      console.log('Fetched RFQ from backend:', rfq);
+      return rfq;
+    } catch (error) {
+      console.error('Error fetching RFQ:', error);
+      throw error;
+    }
+  }
+
+  async create(data) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      // Transform frontend data format (snake_case) to backend expected format (camelCase)
+      // Backend expects: rfqName, rfqNumber, accountId, contactId OR leadId (exactly one), 
+      // lineItems, currency (required)
+      // Optional: vendors, paymentTerms, additionalNotes, status
+      // Note: requestedBy is auto-set from JWT token
+      
+      // Get line items from data
+      const rawLineItems = data.line_items || data.lineItems || [];
+      console.log('RFQ Create - Raw line items:', rawLineItems);
+      console.log('RFQ Create - Line items type:', Array.isArray(rawLineItems));
+      console.log('RFQ Create - Line items length:', rawLineItems.length);
+      
+      // Validate contactId/leadId - exactly one must be provided
+      const contactId = data.contact_id || data.contactId || '';
+      const leadId = data.lead_id || data.leadId || '';
+      if (!contactId && !leadId) {
+        throw new Error('Either contactId or leadId must be provided');
+      }
+      if (contactId && leadId) {
+        throw new Error('Please provide either contactId OR leadId, not both');
+      }
+      
+      // Validate currency - only EGP, USD, or AED
+      const currency = data.currency || 'USD';
+      const validCurrencies = ['EGP', 'USD', 'AED'];
+      if (!validCurrencies.includes(currency)) {
+        throw new Error(`Currency must be one of: ${validCurrencies.join(', ')}`);
+      }
+      
+      // Validate status - only COMPLETED or SUBMITTED
+      const status = data.status || 'SUBMITTED';
+      const validStatuses = ['COMPLETED', 'SUBMITTED'];
+      if (!validStatuses.includes(status)) {
+        throw new Error(`Status must be one of: ${validStatuses.join(', ')}`);
+      }
+      
+      const transformedData = {
+        // Required fields
+        rfqName: (data.rfq_name || data.rfqName || '').trim(),
+        rfqNumber: (data.rfq_number || data.rfqNumber || '').trim(), // User-provided, required
+        accountId: data.account_id || data.accountId || '',
+        currency: currency,
+        status: status,
+        lineItems: rawLineItems.map(item => ({
+          productId: item.product_id || item.productId, // Required in line items
+          productName: item.product_name || item.productName || '',
+          productCode: item.product_code || item.productCode || '',
+          description: item.description || '',
+          quantity: item.quantity || 0,
+          listPrice: item.list_price || item.listPrice || 0,
+          requestedDiscountPercent: item.requested_discount_percent || item.requestedDiscountPercent || 0,
+          requestedDiscountReason: item.requested_discount_reason || item.requestedDiscountReason || '',
+          approvedDiscountPercent: item.approved_discount_percent || item.approvedDiscountPercent || 0,
+          unitPrice: item.unit_price || item.unitPrice || 0,
+          total: item.total || 0,
+        })),
+        
+        // Optional fields
+        contactId: contactId || undefined,
+        leadId: leadId || undefined,
+        vendors: data.vendors || undefined,
+        paymentTerms: data.payment_terms || data.paymentTerms || undefined,
+        additionalNotes: data.additional_notes || data.additionalNotes || undefined,
+      };
+
+      // Remove undefined and empty string fields (except required ones)
+      Object.keys(transformedData).forEach(key => {
+        if (key !== 'rfqName' && key !== 'rfqNumber' && key !== 'accountId' && 
+            key !== 'currency' && key !== 'status' && key !== 'lineItems' && 
+            (transformedData[key] === undefined || transformedData[key] === '')) {
+          delete transformedData[key];
+        }
+      });
+
+      // Clean lineItems - remove undefined/empty fields but keep required fields
+      transformedData.lineItems = transformedData.lineItems.map(item => {
+        const cleanItem = {};
+        Object.keys(item).forEach(key => {
+          // Keep the value if it's not undefined and not empty string
+          // But allow 0, false, and null for some fields
+          if (item[key] !== undefined) {
+            if (key === 'quantity') {
+              // Quantity is required, ensure it's a number (can be 0)
+              cleanItem[key] = Number(item[key]) || 0;
+            } else if (key === 'listPrice' || key === 'unitPrice' || key === 'total') {
+              // Price fields can be 0
+              cleanItem[key] = item[key] !== '' ? (Number(item[key]) || 0) : undefined;
+            } else if (key === 'requestedDiscountPercent' || key === 'approvedDiscountPercent') {
+              // Discount can be 0
+              cleanItem[key] = item[key] !== '' ? (Number(item[key]) || 0) : undefined;
+            } else if (item[key] !== '') {
+              // For other fields, keep if not empty string
+              cleanItem[key] = item[key];
+            }
+          }
+        });
+        
+        // Ensure quantity is always present and is a number
+        if (cleanItem.quantity === undefined) {
+          cleanItem.quantity = 0;
+        } else {
+          cleanItem.quantity = Number(cleanItem.quantity) || 0;
+        }
+        
+        // Ensure productId is present (required for line item)
+        if (!cleanItem.productId) {
+          console.warn('RFQ Create - Line item missing productId:', item);
+        }
+        
+        return cleanItem;
+      }).filter(item => {
+        // Filter out items that don't have a productId and quantity > 0
+        return item.productId && item.quantity > 0;
+      });
+      
+      console.log('RFQ Create - Cleaned line items:', transformedData.lineItems);
+      console.log('RFQ Create - Cleaned line items count:', transformedData.lineItems.length);
+
+      // Validate required fields AFTER cleaning line items
+      if (!transformedData.rfqName) {
+        throw new Error('RFQ name is required');
+      }
+      if (!transformedData.rfqNumber) {
+        throw new Error('RFQ number (quotation code) is required');
+      }
+      if (!transformedData.accountId) {
+        throw new Error('Account ID is required');
+      }
+      // contactId/leadId validation already done above
+      if (!transformedData.currency) {
+        throw new Error('Currency is required');
+      }
+      
+      // Validate line items AFTER cleaning (to ensure valid items remain)
+      if (!transformedData.lineItems || !Array.isArray(transformedData.lineItems) || transformedData.lineItems.length === 0) {
+        console.error('RFQ Create - Validation failed: No valid line items found');
+        console.error('RFQ Create - Original data:', data);
+        console.error('RFQ Create - Raw line items:', rawLineItems);
+        throw new Error('At least one line item with product name and quantity > 0 is required. Please add products to the RFQ.');
+      }
+
+      const url = `${API_BASE_URL}/rfqs`;
+      console.log('Creating RFQ at:', url, 'Token present:', !!token);
+      console.log('Original RFQ data:', data);
+      console.log('Transformed RFQ data:', transformedData);
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(transformedData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to create RFQ: ${response.status}`;
+        console.error('Failed to create RFQ:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      const rfq = await response.json();
+      console.log('Created RFQ:', rfq);
+      return rfq;
+    } catch (error) {
+      console.error('Error creating RFQ:', error);
+      throw error;
+    }
+  }
+
+  async update(id, data) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      // Transform frontend data format (snake_case) to backend expected format (camelCase)
+      // Backend expects: rfqName, rfqNumber, accountId, contactId OR leadId (exactly one), 
+      // lineItems, currency, status (required)
+      // Optional: vendors, paymentTerms, additionalNotes
+      const transformedData = {};
+      
+      // Map all possible fields
+      if (data.rfq_name !== undefined || data.rfqName !== undefined) {
+        transformedData.rfqName = data.rfq_name || data.rfqName;
+      }
+      if (data.rfq_number !== undefined || data.rfqNumber !== undefined) {
+        transformedData.rfqNumber = data.rfq_number || data.rfqNumber;
+      }
+      if (data.account_id !== undefined || data.accountId !== undefined) {
+        transformedData.accountId = data.account_id || data.accountId;
+      }
+      if (data.contact_id !== undefined || data.contactId !== undefined) {
+        transformedData.contactId = data.contact_id || data.contactId;
+      }
+      if (data.lead_id !== undefined || data.leadId !== undefined) {
+        transformedData.leadId = data.lead_id || data.leadId;
+      }
+      if (data.currency !== undefined) {
+        // Validate currency - only EGP, USD, or AED
+        const validCurrencies = ['EGP', 'USD', 'AED'];
+        if (validCurrencies.includes(data.currency)) {
+          transformedData.currency = data.currency;
+        }
+      }
+      if (data.status !== undefined) {
+        // Validate status - only COMPLETED or SUBMITTED
+        const validStatuses = ['COMPLETED', 'SUBMITTED'];
+        if (validStatuses.includes(data.status)) {
+          transformedData.status = data.status;
+        }
+      }
+      if (data.line_items !== undefined || data.lineItems !== undefined) {
+        transformedData.lineItems = (data.line_items || data.lineItems || []).map(item => ({
+          productId: item.product_id || item.productId, // Required in line items
+          productName: item.product_name || item.productName || '',
+          productCode: item.product_code || item.productCode || '',
+          description: item.description || '',
+          quantity: Number(item.quantity) || 0,
+          listPrice: item.list_price || item.listPrice || 0,
+          requestedDiscountPercent: item.requested_discount_percent || item.requestedDiscountPercent || 0,
+          requestedDiscountReason: item.requested_discount_reason || item.requestedDiscountReason || '',
+          approvedDiscountPercent: item.approved_discount_percent || item.approvedDiscountPercent || 0,
+          unitPrice: item.unit_price || item.unitPrice || 0,
+          total: item.total || 0,
+        })).map(item => {
+          const cleanItem = {};
+          Object.keys(item).forEach(key => {
+            if (item[key] !== undefined && item[key] !== '') {
+              cleanItem[key] = item[key];
+            }
+          });
+          return cleanItem;
+        });
+      }
+      if (data.vendors !== undefined) {
+        transformedData.vendors = data.vendors;
+      }
+      if (data.payment_terms !== undefined || data.paymentTerms !== undefined) {
+        transformedData.paymentTerms = data.payment_terms || data.paymentTerms;
+      }
+      if (data.additional_notes !== undefined || data.additionalNotes !== undefined) {
+        transformedData.additionalNotes = data.additional_notes || data.additionalNotes;
+      }
+      if (data.submitted_date !== undefined || data.submittedDate !== undefined) {
+        transformedData.submittedDate = data.submitted_date || data.submittedDate;
+      }
+      if (data.generated_quote_id !== undefined || data.generatedQuoteId !== undefined) {
+        transformedData.generatedQuoteId = data.generated_quote_id || data.generatedQuoteId;
+      }
+
+      // Remove undefined and empty string fields
+      Object.keys(transformedData).forEach(key => {
+        if (transformedData[key] === undefined || transformedData[key] === '') {
+          delete transformedData[key];
+        }
+      });
+
+      const url = `${API_BASE_URL}/rfqs/${id}`;
+      console.log('Updating RFQ at:', url);
+      console.log('Original data:', data);
+      console.log('Transformed data:', transformedData);
+
+      const response = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(transformedData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to update RFQ: ${response.status}`;
+        console.error('Failed to update RFQ:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      const rfq = await response.json();
+      console.log('Updated RFQ:', rfq);
+      return rfq;
+    } catch (error) {
+      console.error('Error updating RFQ:', error);
+      throw error;
+    }
+  }
+
+  async delete(id) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      const url = `${API_BASE_URL}/rfqs/${id}`;
+      console.log('Deleting RFQ at:', url);
+
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to delete RFQ: ${response.status}`;
+        console.error('Failed to delete RFQ:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      console.log('Deleted RFQ:', id);
+      return true;
+    } catch (error) {
+      console.error('Error deleting RFQ:', error);
+      throw error;
+    }
+  }
+}
+
+// Real API Quote Entity
+class QuoteEntity {
+  async list(sort = '', limit = null) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        console.warn('No authentication token found, falling back to mock data');
+        return [];
+      }
+
+      const url = `${API_BASE_URL}/quotes`;
+      console.log('Fetching quotes from:', url);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to fetch quotes: ${response.status}`;
+        console.error('Failed to fetch quotes:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      let quotes = await response.json();
+      
+      // Handle array or object response
+      if (!Array.isArray(quotes)) {
+        quotes = quotes.data || quotes.quotes || [];
+      }
+
+      // Apply sorting if needed
+      if (sort.startsWith('-')) {
+        const field = sort.substring(1);
+        quotes.sort((a, b) => {
+          const aVal = a[field] || '';
+          const bVal = b[field] || '';
+          if (field.includes('date') || field.includes('Date')) {
+            return new Date(bVal) - new Date(aVal);
+          }
+          return bVal > aVal ? 1 : -1;
+        });
+      } else if (sort) {
+        const field = sort;
+        quotes.sort((a, b) => {
+          const aVal = a[field] || '';
+          const bVal = b[field] || '';
+          if (field.includes('date') || field.includes('Date')) {
+            return new Date(aVal) - new Date(bVal);
+          }
+          return aVal > bVal ? 1 : -1;
+        });
+      }
+
+      // Apply limit if specified
+      if (limit) {
+        quotes = quotes.slice(0, limit);
+      }
+
+      console.log(`Fetched ${quotes.length} quotes from backend`);
+      return quotes;
+    } catch (error) {
+      console.error('Error fetching quotes:', error);
+      return [];
+    }
+  }
+
+  async get(id) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      const url = `${API_BASE_URL}/quotes/${id}`;
+      console.log('Fetching quote from:', url);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          const error = new Error('Quote not found');
+          error.status = 404;
+          throw error;
+        }
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to fetch quote: ${response.status}`;
+        throw new Error(errorMessage);
+      }
+
+      const quote = await response.json();
+      console.log('Fetched quote from backend:', quote);
+      return quote;
+    } catch (error) {
+      console.error('Error fetching quote:', error);
+      throw error;
+    }
+  }
+
+  async create(data) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      const url = `${API_BASE_URL}/quotes`;
+      console.log('Creating quote at:', url, 'Token present:', !!token);
+      console.log('Quote data:', data);
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to create quote: ${response.status}`;
+        console.error('Failed to create quote:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      const quote = await response.json();
+      console.log('Created quote:', quote);
+      return quote;
+    } catch (error) {
+      console.error('Error creating quote:', error);
+      throw error;
+    }
+  }
+
+  async update(id, data) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      const url = `${API_BASE_URL}/quotes/${id}`;
+      console.log('Updating quote at:', url);
+
+      const response = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to update quote: ${response.status}`;
+        console.error('Failed to update quote:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      const quote = await response.json();
+      console.log('Updated quote:', quote);
+      return quote;
+    } catch (error) {
+      console.error('Error updating quote:', error);
+      throw error;
+    }
+  }
+
+  async delete(id) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      const url = `${API_BASE_URL}/quotes/${id}`;
+      console.log('Deleting quote at:', url);
+
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to delete quote: ${response.status}`;
+        console.error('Failed to delete quote:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      console.log('Deleted quote:', id);
+      return true;
+    } catch (error) {
+      console.error('Error deleting quote:', error);
+      throw error;
+    }
+  }
+}
+
+// Real API Product Entity
+class ProductEntity {
+  async list(sort = '', limit = null) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        console.warn('No authentication token found, falling back to mock data');
+        return [];
+      }
+
+      const url = `${API_BASE_URL}/products`;
+      console.log('Fetching products from:', url);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to fetch products: ${response.status}`;
+        console.error('Failed to fetch products:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      let products = await response.json();
+      
+      // Handle array or object response
+      if (!Array.isArray(products)) {
+        products = products.data || products.products || [];
+      }
+
+      // Apply sorting if needed
+      if (sort.startsWith('-')) {
+        const field = sort.substring(1);
+        products.sort((a, b) => {
+          const aVal = a[field] || '';
+          const bVal = b[field] || '';
+          if (field.includes('date') || field.includes('Date')) {
+            return new Date(bVal) - new Date(aVal);
+          }
+          return bVal > aVal ? 1 : -1;
+        });
+      } else if (sort) {
+        const field = sort;
+        products.sort((a, b) => {
+          const aVal = a[field] || '';
+          const bVal = b[field] || '';
+          if (field.includes('date') || field.includes('Date')) {
+            return new Date(aVal) - new Date(bVal);
+          }
+          return aVal > bVal ? 1 : -1;
+        });
+      }
+
+      // Apply limit if specified
+      if (limit) {
+        products = products.slice(0, limit);
+      }
+
+      console.log(`Fetched ${products.length} products from backend`);
+      return products;
+    } catch (error) {
+      console.error('Error fetching products:', error);
+      return [];
+    }
+  }
+
+  async get(id) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      const url = `${API_BASE_URL}/products/${id}`;
+      console.log('Fetching product from:', url);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          const error = new Error('Product not found');
+          error.status = 404;
+          throw error;
+        }
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to fetch product: ${response.status}`;
+        throw new Error(errorMessage);
+      }
+
+      const product = await response.json();
+      console.log('Fetched product from backend:', product);
+      return product;
+    } catch (error) {
+      console.error('Error fetching product:', error);
+      throw error;
+    }
+  }
+}
+
+// Real API Manufacturer Entity
+class ManufacturerEntity {
+  async list(sort = '', limit = null) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        console.warn('No authentication token found, falling back to mock data');
+        return [];
+      }
+
+      const url = `${API_BASE_URL}/manufacturers`;
+      console.log('Fetching manufacturers from:', url);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to fetch manufacturers: ${response.status}`;
+        console.error('Failed to fetch manufacturers:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      let manufacturers = await response.json();
+      
+      // Handle array or object response
+      if (!Array.isArray(manufacturers)) {
+        manufacturers = manufacturers.data || manufacturers.manufacturers || [];
+      }
+
+      // Apply sorting if needed
+      if (sort.startsWith('-')) {
+        const field = sort.substring(1);
+        manufacturers.sort((a, b) => {
+          const aVal = a[field] || '';
+          const bVal = b[field] || '';
+          if (field.includes('date') || field.includes('Date')) {
+            return new Date(bVal) - new Date(aVal);
+          }
+          return bVal > aVal ? 1 : -1;
+        });
+      } else if (sort) {
+        const field = sort;
+        manufacturers.sort((a, b) => {
+          const aVal = a[field] || '';
+          const bVal = b[field] || '';
+          if (field.includes('date') || field.includes('Date')) {
+            return new Date(aVal) - new Date(bVal);
+          }
+          return aVal > bVal ? 1 : -1;
+        });
+      }
+
+      // Apply limit if specified
+      if (limit) {
+        manufacturers = manufacturers.slice(0, limit);
+      }
+
+      console.log(`Fetched ${manufacturers.length} manufacturers from backend`);
+      return manufacturers;
+    } catch (error) {
+      console.error('Error fetching manufacturers:', error);
+      return [];
+    }
+  }
+
+  async get(id) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      const url = `${API_BASE_URL}/manufacturers/${id}`;
+      console.log('Fetching manufacturer from:', url);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          const error = new Error('Manufacturer not found');
+          error.status = 404;
+          throw error;
+        }
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to fetch manufacturer: ${response.status}`;
+        throw new Error(errorMessage);
+      }
+
+      const manufacturer = await response.json();
+      console.log('Fetched manufacturer from backend:', manufacturer);
+      return manufacturer;
+    } catch (error) {
+      console.error('Error fetching manufacturer:', error);
+      throw error;
+    }
+  }
+
+  async create(data) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      // Transform frontend data format (snake_case) to backend expected format (camelCase)
+      // Backend expects: companyName (required), productLineIds (optional array), isActive (optional boolean)
+      const transformedData = {
+        companyName: (data.company_name || data.companyName || '').trim(),
+        productLineIds: data.product_line_ids || data.productLineIds || [],
+        isActive: data.is_active !== undefined ? data.is_active : (data.isActive !== undefined ? data.isActive : true),
+      };
+
+      // Validate required fields
+      if (!transformedData.companyName) {
+        throw new Error('Company name is required');
+      }
+
+      // Remove undefined values
+      if (transformedData.productLineIds.length === 0) {
+        delete transformedData.productLineIds;
+      }
+
+      const url = `${API_BASE_URL}/manufacturers`;
+      console.log('Creating manufacturer at:', url, transformedData);
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(transformedData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to create manufacturer: ${response.status}`;
+        console.error('Failed to create manufacturer:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      const manufacturer = await response.json();
+      console.log('Created manufacturer:', manufacturer);
+      return manufacturer;
+    } catch (error) {
+      console.error('Error creating manufacturer:', error);
+      throw error;
+    }
+  }
+
+  async update(id, data) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      // Transform frontend data format (snake_case) to backend expected format (camelCase)
+      const transformedData = {};
+      
+      if (data.company_name !== undefined || data.companyName !== undefined) {
+        transformedData.companyName = (data.company_name || data.companyName || '').trim();
+      }
+      if (data.product_line_ids !== undefined || data.productLineIds !== undefined) {
+        transformedData.productLineIds = data.product_line_ids || data.productLineIds || [];
+      }
+      if (data.is_active !== undefined || data.isActive !== undefined) {
+        transformedData.isActive = data.is_active !== undefined ? data.is_active : data.isActive;
+      }
+
+      // Remove empty arrays
+      if (transformedData.productLineIds && transformedData.productLineIds.length === 0) {
+        delete transformedData.productLineIds;
+      }
+
+      const url = `${API_BASE_URL}/manufacturers/${id}`;
+      console.log('Updating manufacturer at:', url, transformedData);
+
+      const response = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(transformedData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to update manufacturer: ${response.status}`;
+        console.error('Failed to update manufacturer:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      const manufacturer = await response.json();
+      console.log('Updated manufacturer:', manufacturer);
+      return manufacturer;
+    } catch (error) {
+      console.error('Error updating manufacturer:', error);
+      throw error;
+    }
+  }
+
+  async delete(id) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      const url = `${API_BASE_URL}/manufacturers/${id}`;
+      console.log('Deleting manufacturer at:', url);
+
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to delete manufacturer: ${response.status}`;
+        console.error('Failed to delete manufacturer:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      console.log('Deleted manufacturer:', id);
+      return true;
+    } catch (error) {
+      console.error('Error deleting manufacturer:', error);
+      throw error;
+    }
+  }
+}
+
+// Real API ProductLine Entity
+class ProductLineEntity {
+  async list(sort = '', limit = null) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        console.warn('No authentication token found, falling back to mock data');
+        return [];
+      }
+
+      const url = `${API_BASE_URL}/product-lines`;
+      console.log('Fetching product lines from:', url);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to fetch product lines: ${response.status}`;
+        console.error('Failed to fetch product lines:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      let productLines = await response.json();
+      
+      // Handle array or object response
+      if (!Array.isArray(productLines)) {
+        productLines = productLines.data || productLines.productLines || [];
+      }
+
+      // Apply sorting if needed
+      if (sort.startsWith('-')) {
+        const field = sort.substring(1);
+        productLines.sort((a, b) => {
+          const aVal = a[field] || '';
+          const bVal = b[field] || '';
+          if (field.includes('date') || field.includes('Date')) {
+            return new Date(bVal) - new Date(aVal);
+          }
+          return bVal > aVal ? 1 : -1;
+        });
+      } else if (sort) {
+        const field = sort;
+        productLines.sort((a, b) => {
+          const aVal = a[field] || '';
+          const bVal = b[field] || '';
+          if (field.includes('date') || field.includes('Date')) {
+            return new Date(aVal) - new Date(bVal);
+          }
+          return aVal > bVal ? 1 : -1;
+        });
+      }
+
+      // Apply limit if specified
+      if (limit) {
+        productLines = productLines.slice(0, limit);
+      }
+
+      console.log(`Fetched ${productLines.length} product lines from backend`);
+      return productLines;
+    } catch (error) {
+      console.error('Error fetching product lines:', error);
+      return [];
+    }
+  }
+
+  async get(id) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      const url = `${API_BASE_URL}/product-lines/${id}`;
+      console.log('Fetching product line from:', url);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          const error = new Error('Product line not found');
+          error.status = 404;
+          throw error;
+        }
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to fetch product line: ${response.status}`;
+        throw new Error(errorMessage);
+      }
+
+      const productLine = await response.json();
+      console.log('Fetched product line from backend:', productLine);
+      return productLine;
+    } catch (error) {
+      console.error('Error fetching product line:', error);
+      throw error;
+    }
+  }
+}
+
+// Real API QuoteTemplate Entity
+class QuoteTemplateEntity {
+  async list(sort = '', limit = null) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        console.warn('No authentication token found, falling back to mock data');
+        return [];
+      }
+
+      const url = `${API_BASE_URL}/quote-templates`;
+      console.log('Fetching quote templates from:', url);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to fetch quote templates: ${response.status}`;
+        console.error('Failed to fetch quote templates:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      let templates = await response.json();
+      
+      // Handle array or object response
+      if (!Array.isArray(templates)) {
+        templates = templates.data || templates.templates || [];
+      }
+
+      // Apply sorting if needed
+      if (sort.startsWith('-')) {
+        const field = sort.substring(1);
+        templates.sort((a, b) => {
+          const aVal = a[field] || '';
+          const bVal = b[field] || '';
+          if (field.includes('date') || field.includes('Date')) {
+            return new Date(bVal) - new Date(aVal);
+          }
+          return bVal > aVal ? 1 : -1;
+        });
+      } else if (sort) {
+        const field = sort;
+        templates.sort((a, b) => {
+          const aVal = a[field] || '';
+          const bVal = b[field] || '';
+          if (field.includes('date') || field.includes('Date')) {
+            return new Date(aVal) - new Date(bVal);
+          }
+          return aVal > bVal ? 1 : -1;
+        });
+      }
+
+      // Apply limit if specified
+      if (limit) {
+        templates = templates.slice(0, limit);
+      }
+
+      console.log(`Fetched ${templates.length} quote templates from backend`);
+      return templates;
+    } catch (error) {
+      console.error('Error fetching quote templates:', error);
+      return [];
+    }
+  }
+
+  async get(id) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      const url = `${API_BASE_URL}/quote-templates/${id}`;
+      console.log('Fetching quote template from:', url);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          const error = new Error('Quote template not found');
+          error.status = 404;
+          throw error;
+        }
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to fetch quote template: ${response.status}`;
+        throw new Error(errorMessage);
+      }
+
+      const template = await response.json();
+      console.log('Fetched quote template from backend:', template);
+      return template;
+    } catch (error) {
+      console.error('Error fetching quote template:', error);
+      throw error;
+    }
+  }
+
+  async create(data) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      const url = `${API_BASE_URL}/quote-templates`;
+      console.log('Creating quote template at:', url, 'Token present:', !!token);
+      console.log('Template data:', data);
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to create quote template: ${response.status}`;
+        console.error('Failed to create quote template:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      const template = await response.json();
+      console.log('Created quote template:', template);
+      return template;
+    } catch (error) {
+      console.error('Error creating quote template:', error);
+      throw error;
+    }
+  }
+
+  async update(id, data) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      const url = `${API_BASE_URL}/quote-templates/${id}`;
+      console.log('Updating quote template at:', url);
+
+      const response = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to update quote template: ${response.status}`;
+        console.error('Failed to update quote template:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      const template = await response.json();
+      console.log('Updated quote template:', template);
+      return template;
+    } catch (error) {
+      console.error('Error updating quote template:', error);
+      throw error;
+    }
+  }
+
+  async delete(id) {
+    try {
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      const url = `${API_BASE_URL}/quote-templates/${id}`;
+      console.log('Deleting quote template at:', url);
+
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `Failed to delete quote template: ${response.status}`;
+        console.error('Failed to delete quote template:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      console.log('Deleted quote template:', id);
+      return true;
+    } catch (error) {
+      console.error('Error deleting quote template:', error);
+      throw error;
+    }
+  }
+}
+
 // Mock client implementation
 export const base44 = {
   entities: {
@@ -1218,21 +2579,21 @@ export const base44 = {
     Deal: new MockEntity('Deal', mockDeals),
     Task: new MockEntity('Task', mockTasks),
     Activity: new MockEntity('Activity', []),
-    Quote: new MockEntity('Quote', []),
-    Product: new MockEntity('Product', []),
+    Quote: new QuoteEntity(),
+    Product: new ProductEntity(),
     EmailTemplate: new MockEntity('EmailTemplate', []),
     Workflow: new MockEntity('Workflow', []),
     Note: new MockEntity('Note', []),
     Organization: new MockEntity('Organization', [{ id: '1', name: 'My Company', created_date: new Date().toISOString() }]),
     Campaign: new MockEntity('Campaign', []),
-    ProductLine: new MockEntity('ProductLine', []),
-    Manufacturer: new MockEntity('Manufacturer', []),
+    ProductLine: new ProductLineEntity(),
+    Manufacturer: new ManufacturerEntity(),
     PurchaseOrder: new MockEntity('PurchaseOrder', []),
     ManufacturerContact: new MockEntity('ManufacturerContact', []),
-    QuoteTemplate: new MockEntity('QuoteTemplate', []),
+    QuoteTemplate: new QuoteTemplateEntity(),
     ApprovalWorkflow: new MockEntity('ApprovalWorkflow', []),
     ApprovalRequest: new MockEntity('ApprovalRequest', []),
-    RFQ: new MockEntity('RFQ', []),
+    RFQ: new RFQEntity(),
     QuoteSettings: new MockEntity('QuoteSettings', []),
     EntitySerializationSettings: new MockEntity('EntitySerializationSettings', []),
     Communication: new MockEntity('Communication', []),
@@ -1511,8 +2872,47 @@ export const base44 = {
       async SendEmail(_params) {
         return { success: true, message_id: generateId() };
       },
-      async UploadFile(_params) {
-        return { file_url: 'https://example.com/mock-file-' + generateId() };
+      async UploadFile(params) {
+        try {
+          const token = getAuthToken();
+          
+          if (!token) {
+            throw new Error('No authentication token found. Please log in again.');
+          }
+
+          if (!params || !params.file) {
+            throw new Error('File is required for upload');
+          }
+
+          const formData = new FormData();
+          formData.append('file', params.file);
+
+          const url = `${API_BASE_URL}/upload`;
+          console.log('Uploading file to:', url);
+
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              // Don't set Content-Type header - browser will set it with boundary for FormData
+            },
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            const errorMessage = errorData.message || errorData.error || `Failed to upload file: ${response.status}`;
+            console.error('Failed to upload file:', errorMessage);
+            throw new Error(errorMessage);
+          }
+
+          const data = await response.json();
+          console.log('File uploaded successfully:', data);
+          return { file_url: data.file_url || data.url || data.fileUrl };
+        } catch (error) {
+          console.error('Error uploading file:', error);
+          throw error;
+        }
       },
       async GenerateImage(_params) {
         return { image_url: 'https://example.com/mock-image-' + generateId() };

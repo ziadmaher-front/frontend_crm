@@ -59,20 +59,19 @@ export default function Quotes() {
   const [editingRFQ, setEditingRFQ] = useState(null);
   const [rfqFormData, setRFQFormData] = useState({
     rfq_name: "",
+    rfq_number: "", // User-provided, required
     account_id: "",
-    contact_id: "",
-    manufacturer_id: "",
-    product_line_id: "",
+    contact_id: "", // Optional - either contact_id OR lead_id required
+    lead_id: "", // Optional - either contact_id OR lead_id required
+    vendors: "", // Optional string
     line_items: [],
-    currency: "USD",
-    tax_percentage: 0,
-    delivery_terms: "",
+    currency: "USD", // EGP, USD, or AED only
+    status: "SUBMITTED", // COMPLETED or SUBMITTED (default SUBMITTED)
     payment_terms: "",
-    special_requirements: "",
-    internal_notes: "",
     valid_until: "",
+    additional_notes: "", // Replaces internal_notes
   });
-  const [selectedProduct, setSelectedProduct] = useState("");
+  const [selectedProduct, setSelectedProduct] = useState(""); // Back to dropdown - productId required
   const [quantity, setQuantity] = useState(1);
   const [requestedDiscount, setRequestedDiscount] = useState(0);
   const [discountReason, setDiscountReason] = useState("");
@@ -118,6 +117,11 @@ export default function Quotes() {
   const { data: contacts = [] } = useQuery({
     queryKey: ['contacts'],
     queryFn: () => base44.entities.Contact.list(),
+  });
+
+  const { data: leads = [] } = useQuery({
+    queryKey: ['leads'],
+    queryFn: () => base44.entities.Lead.list(),
   });
 
   const { data: products = [] } = useQuery({
@@ -166,9 +170,11 @@ export default function Quotes() {
   const getFilteredProducts = () => {
     let filteredProducts = products.filter(p => p.is_active);
 
-    // Filter by manufacturer if selected
+    // Filter by manufacturer if selected (using manufacturer relation or manufacturerId)
     if (rfqFormData.manufacturer_id) {
       filteredProducts = filteredProducts.filter(p => 
+        p.manufacturer?.id === rfqFormData.manufacturer_id || 
+        p.manufacturerId === rfqFormData.manufacturer_id ||
         p.manufacturer_id === rfqFormData.manufacturer_id
       );
     }
@@ -228,14 +234,7 @@ export default function Quotes() {
     return totalListPrice > 0 ? (totalDiscountAmount / totalListPrice) * 100 : 0;
   };
 
-  // Generate RFQ Number
-  const generateRFQNumber = () => {
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    return `RFQ-${year}-${month}-${random}`;
-  };
+  // RFQ Number is now user-provided, no auto-generation
 
   // Generate Quote Number
   const generateQuoteNumber = () => {
@@ -253,14 +252,19 @@ export default function Quotes() {
         checkDiscountApproval(item.requested_discount_percent)
       );
 
+      // Validate that exactly one of contactId or leadId is provided
+      if (!data.contact_id && !data.lead_id) {
+        throw new Error('Either Contact or Lead must be selected');
+      }
+      if (data.contact_id && data.lead_id) {
+        throw new Error('Please select either Contact OR Lead, not both');
+      }
+
       return base44.entities.RFQ.create({
         ...data,
-        rfq_number: generateRFQNumber(),
-        requested_by: currentUser?.email,
-        status: "Draft",
-        total_discount_percentage: totalDiscount,
-        requires_approval: requiresApproval,
-        approval_status: requiresApproval ? "Pending" : "Not Required"
+        requested_by: currentUser?.email, // Auto-set from current user
+        // status defaults to "SUBMITTED" in form data
+        // rfq_number is user-provided, not auto-generated
       });
     },
     onSuccess: () => {
@@ -446,18 +450,16 @@ export default function Quotes() {
   const resetRFQForm = () => {
     setRFQFormData({
       rfq_name: "",
+      rfq_number: "",
       account_id: "",
       contact_id: "",
-      manufacturer_id: "",
-      product_line_id: "",
+      lead_id: "",
+      vendors: "",
       line_items: [],
       currency: currentUser?.default_currency || "USD",
-      tax_percentage: 0,
-      delivery_terms: "",
+      status: "SUBMITTED",
       payment_terms: "",
-      special_requirements: "",
-      internal_notes: "",
-      valid_until: "",
+      additional_notes: "",
     });
     setSelectedProduct("");
     setQuantity(1);
@@ -466,28 +468,35 @@ export default function Quotes() {
   };
 
   const handleAddRFQLineItem = () => {
-    if (!selectedProduct) return;
+    if (!selectedProduct) {
+      toast.error("Please select a product from the dropdown");
+      return;
+    }
     
     const product = products.find(p => p.id === selectedProduct);
-    if (!product) return;
+    if (!product) {
+      toast.error("Selected product not found");
+      return;
+    }
 
-    const discountedPrice = product.unit_price * (1 - requestedDiscount / 100);
+    const listPrice = product.unit_price || product.list_price || 0;
+    const discountedPrice = listPrice * (1 - requestedDiscount / 100);
     const lineTotal = discountedPrice * quantity;
 
     const lineItem = {
-      product_id: product.id,
-      product_name: product.product_name,
-      product_code: product.product_code || "",
+      product_id: product.id, // Required - from dropdown selection
+      product_name: product.product_name || product.name || "", // Auto-filled from product
+      product_code: product.product_code || product.code || "",
       description: product.description || "",
+      manufacturer_name: product.manufacturer?.company_name || product.manufacturer?.name || "", // Include manufacturer name
+      manufacturer: product.manufacturer, // Include full manufacturer object if available
       quantity: quantity,
-      list_price: product.unit_price,
+      list_price: listPrice,
       requested_discount_percent: requestedDiscount,
-      requested_discount_reason: discountReason,
+      requested_discount_reason: discountReason.trim() || "",
       approved_discount_percent: requestedDiscount,
       unit_price: discountedPrice,
       total: lineTotal,
-      product_line_id: product.product_line_id,
-      manufacturer_id: product.manufacturer_id,
     };
 
     const newLineItems = [...rfqFormData.line_items, lineItem];
@@ -506,20 +515,64 @@ export default function Quotes() {
 
   const calculateRFQTotals = (lineItems) => {
     const subtotal = lineItems.reduce((sum, item) => sum + item.total, 0);
-    const taxAmount = subtotal * (rfqFormData.tax_percentage / 100);
-    const total = subtotal + taxAmount;
+    // Tax is no longer in the new structure - total equals subtotal
+    const total = subtotal;
 
     setRFQFormData(prev => ({
       ...prev,
       line_items: lineItems,
       subtotal,
-      tax_amount: taxAmount,
       total_amount: total,
     }));
   };
 
   const handleRFQSubmit = (e) => {
     e.preventDefault();
+    
+    // Validate required fields
+    if (!rfqFormData.rfq_name) {
+      toast.error("RFQ name is required");
+      return;
+    }
+    if (!rfqFormData.rfq_number) {
+      toast.error("RFQ number is required");
+      return;
+    }
+    if (!rfqFormData.account_id) {
+      toast.error("Account is required");
+      return;
+    }
+    // Validate exactly one of contact_id or lead_id
+    if (!rfqFormData.contact_id && !rfqFormData.lead_id) {
+      toast.error("Either Contact or Lead must be selected");
+      return;
+    }
+    if (rfqFormData.contact_id && rfqFormData.lead_id) {
+      toast.error("Please select either Contact OR Lead, not both");
+      return;
+    }
+    // Validate that at least one line item exists
+    if (!rfqFormData.line_items || rfqFormData.line_items.length === 0) {
+      toast.error("Please add at least one product to the RFQ before saving.");
+      return;
+    }
+    // Validate currency
+    const validCurrencies = ["EGP", "USD", "AED"];
+    if (!validCurrencies.includes(rfqFormData.currency)) {
+      toast.error("Currency must be EGP, USD, or AED");
+      return;
+    }
+    // Validate status
+    const validStatuses = ["COMPLETED", "SUBMITTED"];
+    if (!validStatuses.includes(rfqFormData.status)) {
+      toast.error("Status must be COMPLETED or SUBMITTED");
+      return;
+    }
+    
+    console.log('RFQ Submit - Form data:', rfqFormData);
+    console.log('RFQ Submit - Line items:', rfqFormData.line_items);
+    console.log('RFQ Submit - Line items count:', rfqFormData.line_items?.length);
+    
     if (editingRFQ) {
       updateRFQMutation.mutate({ id: editingRFQ.id, data: rfqFormData });
     } else {
@@ -575,9 +628,18 @@ export default function Quotes() {
     generatePDFMutation.mutate(quote);
   };
 
+  // Filter contacts by account if account is selected, otherwise show all contacts
   const filteredContacts = rfqFormData.account_id 
-    ? contacts.filter(c => c.account_id === rfqFormData.account_id)
-    : contacts;
+    ? contacts.filter(c => {
+        const contactAccountId = c.account_id || c.accountId;
+        return contactAccountId === rfqFormData.account_id;
+      })
+    : contacts; // Show all contacts if no account is selected
+
+  // If filtering by account returns no results, show all contacts as fallback
+  const displayContacts = rfqFormData.account_id && filteredContacts.length === 0 
+    ? contacts 
+    : filteredContacts;
 
   const accessibleManufacturers = getAccessibleManufacturers();
   const filteredProducts = getFilteredProducts();
@@ -705,7 +767,9 @@ export default function Quotes() {
                               )}
                             </div>
                             <p className="text-sm text-gray-500 mt-1">
-                              {accounts.find(a => a.id === rfq.account_id)?.company_name}
+                              {accounts.find(a => a.id === rfq.account_id || a.id === rfq.accountId)?.name || 
+                               accounts.find(a => a.id === rfq.account_id || a.id === rfq.accountId)?.company_name || 
+                               'Unknown Account'}
                             </p>
                           </div>
                           <Badge className={statusColors[rfq.status]}>
@@ -829,7 +893,9 @@ export default function Quotes() {
                             {quote.rfq_id && <Badge className="bg-purple-100 text-purple-700">From RFQ</Badge>}
                           </div>
                           <p className="text-sm text-gray-500 mt-1">
-                            {accounts.find(a => a.id === quote.account_id)?.company_name}
+                            {accounts.find(a => a.id === quote.account_id || a.id === quote.accountId)?.name || 
+                             accounts.find(a => a.id === quote.account_id || a.id === quote.accountId)?.company_name || 
+                             'Unknown Account'}
                           </p>
                         </div>
                         <Badge className={statusColors[quote.status]}>
@@ -988,12 +1054,13 @@ export default function Quotes() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="valid_until">Valid Until</Label>
+                <Label htmlFor="rfq_number">RFQ Number (Quotation Code) *</Label>
                 <Input
-                  id="valid_until"
-                  type="date"
-                  value={rfqFormData.valid_until}
-                  onChange={(e) => setRFQFormData({...rfqFormData, valid_until: e.target.value})}
+                  id="rfq_number"
+                  value={rfqFormData.rfq_number}
+                  onChange={(e) => setRFQFormData({...rfqFormData, rfq_number: e.target.value})}
+                  placeholder="e.g., RFQ-2025-001"
+                  required
                 />
               </div>
             </div>
@@ -1011,107 +1078,133 @@ export default function Quotes() {
                 <SelectContent>
                   {accounts.map((account) => (
                     <SelectItem key={account.id} value={account.id}>
-                      {account.company_name}
+                      {account.name || account.company_name || 'Unnamed Account'}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="contact_id">Contact Name (Optional)</Label>
+                <Select 
+                  value={rfqFormData.contact_id || ""} 
+                  onValueChange={(value) => {
+                    if (value !== "__no_contacts__") {
+                      setRFQFormData({...rfqFormData, contact_id: value, lead_id: ""});
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={displayContacts.length === 0 ? "No contacts available" : "Select contact..."} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {displayContacts.length === 0 ? (
+                      <SelectItem value="__no_contacts__" disabled>
+                        {contacts.length === 0 ? "No contacts found in system" : "No contacts available"}
+                      </SelectItem>
+                    ) : (
+                      displayContacts.map((contact) => (
+                        <SelectItem key={contact.id} value={contact.id}>
+                          {contact.first_name || ''} {contact.last_name || ''} {contact.email ? `(${contact.email})` : ''}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                {rfqFormData.account_id && filteredContacts.length === 0 && contacts.length > 0 && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    No contacts found for this account. Showing all contacts instead.
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lead_id">Lead Name (Optional)</Label>
+                <Select 
+                  value={rfqFormData.lead_id || ""} 
+                  onValueChange={(value) => {
+                    if (value !== "__no_leads__") {
+                      setRFQFormData({...rfqFormData, lead_id: value, contact_id: ""});
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={leads.length === 0 ? "No leads available" : "Select lead..."} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {leads.length === 0 ? (
+                      <SelectItem value="__no_leads__" disabled>
+                        No leads found in system
+                      </SelectItem>
+                    ) : (
+                      leads.map((lead) => (
+                        <SelectItem key={lead.id} value={lead.id}>
+                          {lead.first_name || ''} {lead.last_name || ''} {lead.email ? `(${lead.email})` : ''}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Select either Contact OR Lead (exactly one required)
+                </p>
+              </div>
+            </div>
+
+            {/* Vendors Field */}
             <div className="space-y-2">
-              <Label htmlFor="contact_id">Contact *</Label>
-              <Select 
-                value={rfqFormData.contact_id} 
-                onValueChange={(value) => setRFQFormData({...rfqFormData, contact_id: value})}
-                disabled={!rfqFormData.account_id}
-                required
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select contact..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {filteredContacts.map((contact) => (
-                    <SelectItem key={contact.id} value={contact.id}>
-                      {contact.first_name} {contact.last_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Product Line and Manufacturer Filters */}
-            <div className="grid grid-cols-2 gap-4 p-4 bg-indigo-50 rounded-lg border border-indigo-200">
-              <div className="space-y-2">
-                <Label htmlFor="product_line_id" className="flex items-center gap-2">
-                  <Filter className="w-4 h-4" />
-                  Filter by Product Line
-                </Label>
-                <Select 
-                  value={rfqFormData.product_line_id} 
-                  onValueChange={(value) => setRFQFormData({...rfqFormData, product_line_id: value})}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="All product lines..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={null}>All Product Lines</SelectItem>
-                    {accessibleProductLines.map((pl) => (
-                      <SelectItem key={pl.id} value={pl.id}>
-                        {pl.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="manufacturer_id" className="flex items-center gap-2">
-                  <Filter className="w-4 h-4" />
-                  Filter by Manufacturer
-                </Label>
-                <Select 
-                  value={rfqFormData.manufacturer_id} 
-                  onValueChange={(value) => setRFQFormData({...rfqFormData, manufacturer_id: value})}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="All manufacturers..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={null}>All Manufacturers</SelectItem>
-                    {accessibleManufacturers.map((mfg) => (
-                      <SelectItem key={mfg.id} value={mfg.id}>
-                        {mfg.company_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <Label htmlFor="vendors">Vendors (Optional)</Label>
+              <Input
+                id="vendors"
+                value={rfqFormData.vendors}
+                onChange={(e) => setRFQFormData({...rfqFormData, vendors: e.target.value})}
+                placeholder="Enter vendor names..."
+              />
             </div>
 
             {/* Product Selection */}
             <div className="border rounded-lg p-4 space-y-3 bg-gray-50">
-              <Label className="text-base font-semibold flex items-center justify-between">
-                <span>Add Products</span>
-                <span className="text-sm text-gray-500 font-normal">
-                  {filteredProducts.length} products available
-                </span>
+              <Label className="text-base font-semibold">
+                <span>Add Products *</span>
               </Label>
               <div className="grid grid-cols-12 gap-2">
-                <div className="col-span-5">
-                  <Select value={selectedProduct} onValueChange={setSelectedProduct}>
+                <div className="col-span-4">
+                  <Label htmlFor="product_select">Product *</Label>
+                  <Select
+                    value={selectedProduct}
+                    onValueChange={setSelectedProduct}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select product..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {filteredProducts.map((product) => (
-                        <SelectItem key={product.id} value={product.id}>
-                          {product.product_name} - {CURRENCY_SYMBOLS[rfqFormData.currency]}{product.unit_price}
+                      {filteredProducts.length === 0 ? (
+                        <SelectItem value="__no_products__" disabled>
+                          No products available
                         </SelectItem>
-                      ))}
+                      ) : (
+                        filteredProducts.map((product) => {
+                          const productName = product.product_name || product.name || product.product_code || product.code || 'Unnamed Product';
+                          const manufacturerName = product.manufacturer?.company_name || product.manufacturer?.name || '';
+                          const displayText = manufacturerName 
+                            ? `${productName} (${manufacturerName})`
+                            : productName;
+                          
+                          return (
+                            <SelectItem key={product.id} value={product.id}>
+                              {displayText}
+                            </SelectItem>
+                          );
+                        })
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="col-span-2">
+                  <Label htmlFor="quantity">Quantity *</Label>
                   <Input
+                    id="quantity"
                     type="number"
                     min="1"
                     value={quantity}
@@ -1120,7 +1213,9 @@ export default function Quotes() {
                   />
                 </div>
                 <div className="col-span-2">
+                  <Label htmlFor="discount">Discount %</Label>
                   <Input
+                    id="discount"
                     type="number"
                     min="0"
                     max="100"
@@ -1129,27 +1224,25 @@ export default function Quotes() {
                     placeholder="Discount %"
                   />
                 </div>
-                <div className="col-span-2">
+                <div className="col-span-4">
+                  <Label htmlFor="discount_reason">Discount Reason</Label>
                   <Input
+                    id="discount_reason"
                     value={discountReason}
                     onChange={(e) => setDiscountReason(e.target.value)}
-                    placeholder="Reason"
+                    placeholder="Discount Reason"
                   />
                 </div>
-                <div className="col-span-1">
-                  <Button type="button" onClick={handleAddRFQLineItem} disabled={!selectedProduct} className="w-full">
-                    <Plus className="w-4 h-4" />
-                  </Button>
-                </div>
               </div>
-
-              {filteredProducts.length === 0 && (
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                  <p className="text-sm text-amber-800">
-                    No products available with current filters. Try changing the product line or manufacturer filter.
-                  </p>
-                </div>
-              )}
+              <Button
+                type="button"
+                onClick={handleAddRFQLineItem}
+                disabled={!selectedProduct}
+                className="w-full"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Product
+              </Button>
 
               {rfqFormData.line_items.length > 0 && (
                 <div className="space-y-2 mt-4">
@@ -1159,9 +1252,18 @@ export default function Quotes() {
                     data={rfqFormData.line_items.map((item, index) => {
                       const requiresApproval = checkDiscountApproval(item.requested_discount_percent);
                       
+                      // Get manufacturer name if available (from product relation or stored in line item)
+                      const manufacturerName = item.manufacturer_name || item.manufacturer?.company_name || item.manufacturer?.name || '';
+                      
                       return [
                         <div key={`product-${index}`}>
                           <p className="font-medium">{item.product_name}</p>
+                          {manufacturerName && (
+                            <p className="text-xs text-gray-500">Manufacturer: {manufacturerName}</p>
+                          )}
+                          {item.product_code && (
+                            <p className="text-xs text-gray-500">Code: {item.product_code}</p>
+                          )}
                           {item.requested_discount_reason && (
                             <p className="text-xs text-amber-600">Reason: {item.requested_discount_reason}</p>
                           )}
@@ -1197,25 +1299,6 @@ export default function Quotes() {
                       <span className="text-gray-600">Subtotal:</span>
                       <span className="font-semibold">{CURRENCY_SYMBOLS[rfqFormData.currency]}{rfqFormData.subtotal?.toFixed(2) || '0.00'}</span>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-600">Tax:</span>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={rfqFormData.tax_percentage}
-                          onChange={(e) => {
-                            const newTax = parseFloat(e.target.value) || 0;
-                            setRFQFormData({...rfqFormData, tax_percentage: newTax});
-                            calculateRFQTotals(rfqFormData.line_items);
-                          }}
-                          className="w-20"
-                        />
-                        <span>%</span>
-                        <span className="font-semibold">{CURRENCY_SYMBOLS[rfqFormData.currency]}{rfqFormData.tax_amount?.toFixed(2) || '0.00'}</span>
-                      </div>
-                    </div>
                     <div className="flex justify-between pt-2 border-t">
                       <span className="text-lg font-semibold">Total:</span>
                       <span className="text-2xl font-bold text-emerald-600">{CURRENCY_SYMBOLS[rfqFormData.currency]}{rfqFormData.total_amount?.toFixed(2) || '0.00'}</span>
@@ -1227,42 +1310,59 @@ export default function Quotes() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="delivery_terms">Delivery Terms</Label>
-                <Textarea
-                  id="delivery_terms"
-                  value={rfqFormData.delivery_terms}
-                  onChange={(e) => setRFQFormData({...rfqFormData, delivery_terms: e.target.value})}
-                  rows={2}
-                />
+                <Label htmlFor="currency">Quote Currency *</Label>
+                <Select
+                  value={rfqFormData.currency}
+                  onValueChange={(value) => setRFQFormData({...rfqFormData, currency: value})}
+                  required
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select currency..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="EGP">EGP - Egyptian Pound</SelectItem>
+                    <SelectItem value="USD">USD - US Dollar</SelectItem>
+                    <SelectItem value="AED">AED - UAE Dirham</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="payment_terms">Payment Terms</Label>
-                <Textarea
-                  id="payment_terms"
-                  value={rfqFormData.payment_terms}
-                  onChange={(e) => setRFQFormData({...rfqFormData, payment_terms: e.target.value})}
-                  rows={2}
-                />
+                <Label htmlFor="status">RFQ Status *</Label>
+                <Select
+                  value={rfqFormData.status}
+                  onValueChange={(value) => setRFQFormData({...rfqFormData, status: value})}
+                  required
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select status..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="SUBMITTED">SUBMITTED</SelectItem>
+                    <SelectItem value="COMPLETED">COMPLETED</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="special_requirements">Special Requirements</Label>
+              <Label htmlFor="payment_terms">Payment Terms (Optional)</Label>
               <Textarea
-                id="special_requirements"
-                value={rfqFormData.special_requirements}
-                onChange={(e) => setRFQFormData({...rfqFormData, special_requirements: e.target.value})}
+                id="payment_terms"
+                value={rfqFormData.payment_terms}
+                onChange={(e) => setRFQFormData({...rfqFormData, payment_terms: e.target.value})}
                 rows={2}
+                placeholder="Enter payment terms..."
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="internal_notes">Internal Notes</Label>
+              <Label htmlFor="additional_notes">Additional Notes (Optional)</Label>
               <Textarea
-                id="internal_notes"
-                value={rfqFormData.internal_notes}
-                onChange={(e) => setRFQFormData({...rfqFormData, internal_notes: e.target.value})}
-                rows={2}
+                id="additional_notes"
+                value={rfqFormData.additional_notes}
+                onChange={(e) => setRFQFormData({...rfqFormData, additional_notes: e.target.value})}
+                rows={3}
+                placeholder="Enter any additional notes..."
               />
             </div>
 
