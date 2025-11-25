@@ -32,6 +32,7 @@ import {
   Zap,
   TrendingUp,
   MapPin,
+  UserPlus,
 } from "lucide-react";
 import {
   Dialog,
@@ -54,6 +55,7 @@ import BulkOperations from "../components/BulkOperations";
 import { AccessibleFormField } from '@/components/AccessibilityEnhancements';
 import { createPageUrl } from '@/utils';
 import { getSavedViews, saveView, deleteView } from "@/store/savedViews";
+import PhoneInput from "@/components/PhoneInput";
 
 const NO_SAVED_VIEWS_VALUE = "__no_saved_views__";
 
@@ -62,6 +64,7 @@ export default function Leads() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterSource, setFilterSource] = useState("all");
   const [filterAssignedUser, setFilterAssignedUser] = useState("all");
+  const [filterAccount, setFilterAccount] = useState("all");
   const [filterScoreRange, setFilterScoreRange] = useState(null);
   const [sortBy, setSortBy] = useState("created_date");
   const [sortOrder, setSortOrder] = useState("desc");
@@ -74,13 +77,31 @@ export default function Leads() {
   const [qualifyingLead, setQualifyingLead] = useState(null);
   const [editingLead, setEditingLead] = useState(null);
   const [formData, setFormData] = useState({
+    salutation: "",
     first_name: "",
     last_name: "",
     email: "",
     phone: "",
     shipping_street: "",
+    shipping_street_2: "",
+    shipping_city: "",
+    shipping_state: "",
+    shipping_country: "",
+    shipping_zip_code: "",
     billing_city: "",
-    account_name: "",
+    billing_street: "",
+    billing_street_2: "",
+    billing_state: "",
+    billing_country: "",
+    billing_zip_code: "",
+    accountId: "",
+    product_name: "",
+    currency_code: "USD",
+    employee_co: "",
+    hq_code: "",
+    billing_amount: "",
+    exchange_rate: 1.0,
+    ownerId: "",
   });
 
   const { toast } = useToast();
@@ -99,6 +120,7 @@ export default function Leads() {
       status: filterStatus,
       source: filterSource,
       assignedUser: filterAssignedUser,
+      account: filterAccount,
       scoreRange: filterScoreRange,
       sortBy,
       sortOrder
@@ -116,6 +138,7 @@ export default function Leads() {
     setFilterStatus(def.status ?? 'all');
     setFilterSource(def.source ?? 'all');
     setFilterAssignedUser(def.assignedUser ?? 'all');
+    setFilterAccount(def.account ?? 'all');
     setFilterScoreRange(def.scoreRange ?? null);
     setSortBy(def.sortBy ?? 'created_date');
     setSortOrder(def.sortOrder ?? 'desc');
@@ -144,20 +167,29 @@ export default function Leads() {
   };
 
   const { data: leads = [], isLoading: leadsLoading } = useQuery({
-    queryKey: ['leads', searchQuery, filterStatus, filterSource, filterAssignedUser, filterScoreRange, sortBy, sortOrder],
+    queryKey: ['leads', searchQuery, filterStatus, filterSource, filterAssignedUser, filterAccount, filterScoreRange, sortBy, sortOrder],
     queryFn: async () => {
       const options = {
         searchQuery,
         status: filterStatus !== 'all' ? filterStatus : null,
         source: filterSource !== 'all' ? filterSource : null,
         assignedUser: filterAssignedUser !== 'all' ? filterAssignedUser : null,
+        accountId: filterAccount !== 'all' ? filterAccount : null,
         scoreRange: filterScoreRange,
         sortBy: sortOrder === 'desc' ? `-${sortBy}` : sortBy
       };
       
       const result = await leadService.getAllLeads(options);
       if (result.success) {
-        return result.data;
+        // Apply account filter if needed
+        let filteredLeads = result.data;
+        if (filterAccount !== 'all' && filterAccount) {
+          filteredLeads = filteredLeads.filter(lead => {
+            const leadAccountId = lead.accountId || lead.account_id || lead.account?.id;
+            return leadAccountId === filterAccount;
+          });
+        }
+        return filteredLeads;
       }
       throw new Error(result.error);
     },
@@ -175,9 +207,19 @@ export default function Leads() {
     enabled: showAnalytics,
   });
 
-  const { data: users = [] } = useQuery({
-    queryKey: ['users'],
-    queryFn: () => base44.entities.User.list(),
+  const { data: users = [], isLoading: usersLoading, error: usersError } = useQuery({
+    queryKey: ['accountCreationFormUsers'],
+    queryFn: async () => {
+      try {
+        const usersList = await base44.entities.User.getAccountCreationFormUsers();
+        return usersList;
+      } catch (error) {
+        console.error('Error fetching account creation form users:', error);
+        return [];
+      }
+    },
+    retry: 1,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
   const { data: accounts = [] } = useQuery({
@@ -357,15 +399,114 @@ export default function Leads() {
     },
   });
 
+  const convertToContactMutation = useMutation({
+    mutationFn: async (leadId) => {
+      console.log('Converting lead to contact, Lead ID:', leadId);
+      try {
+        const result = await base44.orchestrator.convertLeadToContact(leadId);
+        console.log('Conversion result:', result);
+        return result;
+      } catch (error) {
+        console.error('Conversion error details:', {
+          message: error.message,
+          error,
+          leadId,
+        });
+        throw error;
+      }
+    },
+    onSuccess: (contact) => {
+      console.log('Conversion successful, contact:', contact);
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      toast({
+        title: "Success",
+        description: "Lead converted to contact successfully",
+      });
+      // Navigate to the contact page
+      if (contact?.id) {
+        navigate(`/contacts/${contact.id}`);
+      } else {
+        navigate('/contacts');
+      }
+    },
+    onError: (error) => {
+      console.error('Conversion mutation error:', error);
+      const errorMessage = error?.response?.data?.message || 
+                          error?.message || 
+                          "Failed to convert lead to contact. Please check the console for details.";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleConvertToContact = async (lead) => {
+    if (!lead || !lead.id) {
+      toast({
+        title: "Error",
+        description: "Invalid lead data. Cannot convert.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Fetch the full lead data to inspect before conversion
+    try {
+      const fullLead = await base44.entities.Lead.get(lead.id);
+      console.log('Full lead data before conversion:', JSON.stringify(fullLead, null, 2));
+      
+      // Validate lead has minimum required data
+      if (!fullLead.first_name && !fullLead.last_name && !fullLead.email) {
+        toast({
+          title: "Error",
+          description: "Lead must have at least a name or email to convert to contact.",
+          variant: "destructive",
+        });
+        return;
+      }
+    } catch (error) {
+      console.error('Error fetching lead data:', error);
+      // Continue anyway - backend will validate
+    }
+
+    const leadName = `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || lead.email || 'this lead';
+    
+    if (window.confirm(`Are you sure you want to convert "${leadName}" to a contact? This will delete the lead and create a new contact.`)) {
+      console.log('Converting lead:', { leadId: lead.id, lead });
+      convertToContactMutation.mutate(lead.id);
+    }
+  };
+
   const resetForm = () => {
     setFormData({
+      salutation: "",
       first_name: "",
       last_name: "",
       email: "",
       phone: "",
       shipping_street: "",
+      shipping_street_2: "",
+      shipping_city: "",
+      shipping_state: "",
+      shipping_country: "",
+      shipping_zip_code: "",
       billing_city: "",
-      account_name: "",
+      billing_street: "",
+      billing_street_2: "",
+      billing_state: "",
+      billing_country: "",
+      billing_zip_code: "",
+      accountId: "",
+      product_name: "",
+      currency_code: "USD",
+      employee_co: "",
+      hq_code: "",
+      billing_amount: "",
+      exchange_rate: 1.0,
+      ownerId: "",
     });
   };
 
@@ -381,13 +522,31 @@ export default function Leads() {
   const handleEdit = (lead) => {
     setEditingLead(lead);
     setFormData({
+      salutation: lead.salutation || lead.title || "",
       first_name: lead.first_name || "",
       last_name: lead.last_name || "",
       email: lead.email || "",
       phone: lead.phone || "",
       shipping_street: lead.shipping_street || lead.address || "",
+      shipping_street_2: lead.shipping_street_2 || lead.shipping_address_2 || "",
+      shipping_city: lead.shipping_city || "",
+      shipping_state: lead.shipping_state || "",
+      shipping_country: lead.shipping_country || "",
+      shipping_zip_code: lead.shipping_zip_code || lead.shipping_zip || "",
       billing_city: lead.billing_city || lead.city || "",
-      account_name: lead.account_name || lead.company || "",
+      billing_street: lead.billing_street || "",
+      billing_street_2: lead.billing_street_2 || lead.billing_address_2 || "",
+      billing_state: lead.billing_state || "",
+      billing_country: lead.billing_country || "",
+      billing_zip_code: lead.billing_zip_code || lead.billing_zip || "",
+      accountId: lead.accountId || lead.account_id || lead.account?.id || "",
+      product_name: lead.product_name || lead.product || "",
+      currency_code: lead.currency_code || lead.currency || "USD",
+      employee_co: lead.employee_co || lead.employee_company || "",
+      hq_code: lead.hq_code || lead.headquarters_code || "",
+      billing_amount: lead.billing_amount || lead.amount || "",
+      exchange_rate: lead.exchange_rate || 1.0,
+      ownerId: lead.ownerId || lead.owner_id || lead.owner?.id || "",
     });
     setShowDialog(true);
   };
@@ -438,6 +597,9 @@ export default function Leads() {
       case 'assignedUser':
         setFilterAssignedUser(value);
         break;
+      case 'account':
+        setFilterAccount(value);
+        break;
       case 'scoreRange':
         setFilterScoreRange(value);
         break;
@@ -464,6 +626,7 @@ export default function Leads() {
     setFilterStatus('all');
     setFilterSource('all');
     setFilterAssignedUser('all');
+    setFilterAccount('all');
     setFilterScoreRange([0, 100]);
     setSortBy('created_at');
     setSortOrder('desc');
@@ -696,6 +859,19 @@ export default function Leads() {
               ))}
             </SelectContent>
           </Select>
+          <Select value={filterAccount} onValueChange={(value) => handleFilterChange('account', value)}>
+            <SelectTrigger className="crm-select w-48">
+              <SelectValue placeholder="Filter by account" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Accounts</SelectItem>
+              {accounts?.map((account) => (
+                <SelectItem key={account.id} value={account.id}>
+                  {account.name || account.company_name || account.id}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             variant="outline"
             size="sm"
@@ -874,8 +1050,22 @@ export default function Leads() {
                               handleQualifyLead(lead);
                             }}
                             className="opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Qualify Lead"
                           >
                             <Target className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleConvertToContact(lead);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-blue-600 hover:text-blue-700"
+                            title="Convert to Contact"
+                            disabled={convertToContactMutation.isPending}
+                          >
+                            <UserPlus className="w-4 h-4" />
                           </Button>
                           <Button
                             variant="ghost"
@@ -885,6 +1075,7 @@ export default function Leads() {
                               handleDelete(lead.id);
                             }}
                             className="opacity-0 group-hover:opacity-100 transition-opacity text-red-600 hover:text-red-700"
+                            title="Delete Lead"
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -1035,8 +1226,22 @@ export default function Leads() {
                                 e.stopPropagation();
                                 handleViewDetails(lead);
                               }}
+                              title="View Details"
                             >
                               <Eye className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleConvertToContact(lead);
+                              }}
+                              className="text-blue-600 hover:text-blue-700"
+                              title="Convert to Contact"
+                              disabled={convertToContactMutation.isPending}
+                            >
+                              <UserPlus className="w-4 h-4" />
                             </Button>
                           </div>
                         </div>
@@ -1125,6 +1330,7 @@ export default function Leads() {
                                   e.stopPropagation();
                                   handleEdit(lead);
                                 }}
+                                title="Edit Lead"
                               >
                                 <Edit className="w-4 h-4" />
                               </Button>
@@ -1135,8 +1341,22 @@ export default function Leads() {
                                   e.stopPropagation();
                                   handleViewDetails(lead);
                                 }}
+                                title="View Details"
                               >
                                 <Eye className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleConvertToContact(lead);
+                                }}
+                                title="Convert to Contact"
+                                disabled={convertToContactMutation.isPending}
+                                className="text-blue-600 hover:text-blue-700"
+                              >
+                                <UserPlus className="w-4 h-4" />
                               </Button>
                             </div>
                           </td>
@@ -1167,6 +1387,25 @@ export default function Leads() {
             <DialogTitle>{editingLead ? 'Edit Lead' : 'Add New Lead'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="salutation">Salutation</Label>
+              <Select
+                value={formData.salutation || ""}
+                onValueChange={(value) => setFormData({...formData, salutation: value})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select salutation (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Mr.">Mr.</SelectItem>
+                  <SelectItem value="Mrs.">Mrs.</SelectItem>
+                  <SelectItem value="Ms.">Ms.</SelectItem>
+                  <SelectItem value="Dr.">Dr.</SelectItem>
+                  <SelectItem value="Prof.">Prof.</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <AccessibleFormField
                 label="First Name"
@@ -1201,48 +1440,340 @@ export default function Leads() {
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone *</Label>
-                <Input
-                  id="phone"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                  required
-                />
-              </div>
+              <PhoneInput
+                label="Mobile Phone"
+                value={formData.mobile_phone}
+                onChange={(value) => setFormData({...formData, mobile_phone: value})}
+                required={true}
+                placeholder="Enter mobile phone number"
+                id="mobile_phone"
+                name="mobile_phone"
+              />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="shipping_street">Shipping Street *</Label>
+              <PhoneInput
+                label="Phone (Secondary)"
+                value={formData.phone}
+                onChange={(value) => setFormData({...formData, phone: value})}
+                required={false}
+                placeholder="Enter secondary phone number"
+                id="phone"
+                name="phone"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="department">Department</Label>
+              <Select
+                value={formData.department || ""}
+                onValueChange={(value) => setFormData({...formData, department: value})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select department (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CEO">CEO</SelectItem>
+                  <SelectItem value="CTO">CTO</SelectItem>
+                  <SelectItem value="CFO">CFO</SelectItem>
+                  <SelectItem value="COO">COO</SelectItem>
+                  <SelectItem value="CMO">CMO</SelectItem>
+                  <SelectItem value="CHRO">CHRO</SelectItem>
+                  <SelectItem value="CIO">CIO</SelectItem>
+                  <SelectItem value="CRO">CRO</SelectItem>
+                  <SelectItem value="CSO">CSO</SelectItem>
+                  <SelectItem value="CPO">CPO</SelectItem>
+                  <SelectItem value="CSO">CSO</SelectItem>
+                  <SelectItem value="CSO">CSO</SelectItem>
+                  <SelectItem value="Sales">Sales</SelectItem>
+                  <SelectItem value="Marketing">Marketing</SelectItem>
+                  <SelectItem value="Customer Service">Customer Service</SelectItem>
+                  <SelectItem value="Support">Support</SelectItem>
+                  <SelectItem value="IT">IT</SelectItem>
+                  <SelectItem value="HR">HR</SelectItem>
+                  <SelectItem value="Finance">Finance</SelectItem>
+                  <SelectItem value="Accounting">Accounting</SelectItem>
+                  <SelectItem value="Operations">Operations</SelectItem>
+                  <SelectItem value="Management">Management</SelectItem>
+                  <SelectItem value="Engineering">Engineering</SelectItem>
+                  <SelectItem value="Research & Development">Research & Development</SelectItem>
+                  <SelectItem value="Legal">Legal</SelectItem>
+                  <SelectItem value="Procurement">Procurement</SelectItem>
+                  <SelectItem value="Quality Assurance">Quality Assurance</SelectItem>
+                  <SelectItem value="Production">Production</SelectItem>
+                  <SelectItem value="Logistics">Logistics</SelectItem>
+                  <SelectItem value="Administration">Administration</SelectItem>
+                  <SelectItem value="Business Development">Business Development</SelectItem>
+                  <SelectItem value="Product Management">Product Management</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="shipping_street">Shipping Street</Label>
               <Input
                 id="shipping_street"
                 value={formData.shipping_street}
                 onChange={(e) => setFormData({...formData, shipping_street: e.target.value})}
                 placeholder="Enter street address"
-                required
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="billing_city">Billing City *</Label>
+              <Label htmlFor="shipping_street_2">Shipping Street 2</Label>
               <Input
-                id="billing_city"
-                value={formData.billing_city}
-                onChange={(e) => setFormData({...formData, billing_city: e.target.value})}
-                placeholder="Enter city"
-                required
+                id="shipping_street_2"
+                value={formData.shipping_street_2}
+                onChange={(e) => setFormData({...formData, shipping_street_2: e.target.value})}
+                placeholder="Enter apartment, suite, etc."
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="shipping_city">Shipping City</Label>
+                <Input
+                  id="shipping_city"
+                  value={formData.shipping_city}
+                  onChange={(e) => setFormData({...formData, shipping_city: e.target.value})}
+                  placeholder="Enter city"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="shipping_state">Shipping State</Label>
+                <Input
+                  id="shipping_state"
+                  value={formData.shipping_state}
+                  onChange={(e) => setFormData({...formData, shipping_state: e.target.value})}
+                  placeholder="Enter state"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="shipping_country">Shipping Country</Label>
+                <Input
+                  id="shipping_country"
+                  value={formData.shipping_country}
+                  onChange={(e) => setFormData({...formData, shipping_country: e.target.value})}
+                  placeholder="Enter country"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="shipping_zip_code">Shipping Zip Code</Label>
+                <Input
+                  id="shipping_zip_code"
+                  value={formData.shipping_zip_code}
+                  onChange={(e) => setFormData({...formData, shipping_zip_code: e.target.value})}
+                  placeholder="Enter zip code"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="billing_street">Billing Street</Label>
+              <Input
+                id="billing_street"
+                value={formData.billing_street}
+                onChange={(e) => setFormData({...formData, billing_street: e.target.value})}
+                placeholder="Enter street address"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="account_name">Account Name *</Label>
+              <Label htmlFor="billing_street_2">Billing Street 2</Label>
               <Input
-                id="account_name"
-                value={formData.account_name}
-                onChange={(e) => setFormData({...formData, account_name: e.target.value})}
-                placeholder="Enter account/company name"
-                required
+                id="billing_street_2"
+                value={formData.billing_street_2}
+                onChange={(e) => setFormData({...formData, billing_street_2: e.target.value})}
+                placeholder="Enter apartment, suite, etc."
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="billing_city">Billing City</Label>
+                <Input
+                  id="billing_city"
+                  value={formData.billing_city}
+                  onChange={(e) => setFormData({...formData, billing_city: e.target.value})}
+                  placeholder="Enter city"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="billing_state">Billing State</Label>
+                <Input
+                  id="billing_state"
+                  value={formData.billing_state}
+                  onChange={(e) => setFormData({...formData, billing_state: e.target.value})}
+                  placeholder="Enter state"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="billing_country">Billing Country</Label>
+                <Input
+                  id="billing_country"
+                  value={formData.billing_country}
+                  onChange={(e) => setFormData({...formData, billing_country: e.target.value})}
+                  placeholder="Enter country"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="billing_zip_code">Billing Zip Code</Label>
+                <Input
+                  id="billing_zip_code"
+                  value={formData.billing_zip_code}
+                  onChange={(e) => setFormData({...formData, billing_zip_code: e.target.value})}
+                  placeholder="Enter zip code"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="product_name">Product Name</Label>
+                <Input
+                  id="product_name"
+                  value={formData.product_name}
+                  onChange={(e) => setFormData({...formData, product_name: e.target.value})}
+                  placeholder="Enter product name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="currency_code">Currency Code</Label>
+                <Select
+                  value={formData.currency_code || "USD"}
+                  onValueChange={(value) => setFormData({...formData, currency_code: value})}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select currency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="EUR">EUR</SelectItem>
+                    <SelectItem value="GBP">GBP</SelectItem>
+                    <SelectItem value="EGP">EGP</SelectItem>
+                    <SelectItem value="AED">AED</SelectItem>
+                    <SelectItem value="SAR">SAR</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="employee_co">Employee Company</Label>
+                <Input
+                  id="employee_co"
+                  value={formData.employee_co}
+                  onChange={(e) => setFormData({...formData, employee_co: e.target.value})}
+                  placeholder="Enter employee company"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="hq_code">HQ Code</Label>
+                <Input
+                  id="hq_code"
+                  value={formData.hq_code}
+                  onChange={(e) => setFormData({...formData, hq_code: e.target.value})}
+                  placeholder="Enter HQ code"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="billing_amount">Billing Amount</Label>
+                <Input
+                  id="billing_amount"
+                  type="number"
+                  step="0.01"
+                  value={formData.billing_amount}
+                  onChange={(e) => setFormData({...formData, billing_amount: e.target.value})}
+                  placeholder="Enter billing amount"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="exchange_rate">Exchange Rate</Label>
+                <Input
+                  id="exchange_rate"
+                  type="number"
+                  step="0.0001"
+                  value={formData.exchange_rate}
+                  onChange={(e) => setFormData({...formData, exchange_rate: parseFloat(e.target.value) || 1.0})}
+                  placeholder="Enter exchange rate"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="accountId">Account *</Label>
+              <Select
+                value={formData.accountId || ""}
+                onValueChange={(value) => {
+                  if (value !== "__none__") {
+                    setFormData({...formData, accountId: value});
+                  } else {
+                    setFormData({...formData, accountId: ""});
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select account..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {accounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name || account.company_name || 'Unnamed Account'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ownerId">Owner (Optional)</Label>
+              <Select
+                value={formData.ownerId || ""}
+                onValueChange={(value) => {
+                  if (value !== "__none__") {
+                    setFormData({...formData, ownerId: value});
+                  } else {
+                    setFormData({...formData, ownerId: ""});
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={usersLoading ? "Loading users..." : "Select owner..."} />
+                </SelectTrigger>
+                <SelectContent>
+                  {usersLoading ? (
+                    <SelectItem value="__loading__" disabled>Loading users...</SelectItem>
+                  ) : usersError ? (
+                    <SelectItem value="__error__" disabled>Error loading users</SelectItem>
+                  ) : Array.isArray(users) && users.length > 0 ? (
+                    <>
+                      <SelectItem value="__none__">None</SelectItem>
+                      {users
+                        .filter(user => user?.id)
+                        .map((user) => (
+                          <SelectItem key={user.id} value={user.id}>
+                            {user.name || user.email || user.id || "Unknown User"}
+                            {user.email ? ` (${user.email})` : ''}
+                          </SelectItem>
+                        ))}
+                    </>
+                  ) : (
+                    <SelectItem value="__disabled__" disabled>No users available</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
             </div>
 
             <DialogFooter>

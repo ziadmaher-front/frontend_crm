@@ -9,11 +9,8 @@ import {
   Sparkles,
   CheckSquare,
   Activity,
-  Package,
   FileText,
   Megaphone,
-  Briefcase,
-  Factory,
   ShoppingCart,
   Settings,
   User as UserIcon,
@@ -97,23 +94,8 @@ const allNavItems = [
     icon: BarChart3,
   },
   {
-    title: "Products",
-    url: createPageUrl("Products"),
-    icon: Package,
-  },
-  {
-    title: "Product Lines",
-    url: createPageUrl("ProductLines"),
-    icon: Briefcase,
-  },
-  {
-    title: "Manufacturers",
-    url: createPageUrl("Manufacturers"),
-    icon: Factory,
-  },
-  {
-    title: "Purchase Orders",
-    url: createPageUrl("PurchaseOrders"),
+    title: "Sales Orders",
+    url: createPageUrl("SalesOrders"),
     icon: ShoppingCart,
   },
   {

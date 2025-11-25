@@ -9,14 +9,13 @@ const Accounts = lazy(() => import("./Accounts"));
 const Deals = lazy(() => import("./Deals"));
 const Activities = lazy(() => import("./Activities"));
 const Tasks = lazy(() => import("./Tasks"));
-const Products = lazy(() => import("./Products"));
 const Quotes = lazy(() => import("./Quotes"));
 const Campaigns = lazy(() => import("./Campaigns"));
 const EmailTemplates = lazy(() => import("./EmailTemplates"));
 const Reports = lazy(() => import("./Reports"));
-const ProductLines = lazy(() => import("./ProductLines"));
 const PurchaseOrders = lazy(() => import("./PurchaseOrders"));
-const Manufacturers = lazy(() => import("./Manufacturers"));
+const Security = lazy(() => import("./Security"));
+const UserExperience = lazy(() => import("./UserExperience"));
 const Profile = lazy(() => import("./Profile"));
 const Settings = lazy(() => import("./Settings"));
 const Approvals = lazy(() => import("./Approvals"));
@@ -129,8 +128,6 @@ const PAGES = {
     
     Tasks: Tasks,
     
-    Products: Products,
-    
     Quotes: Quotes,
     
     Campaigns: Campaigns,
@@ -139,11 +136,11 @@ const PAGES = {
     
     Reports: Reports,
     
-    ProductLines: ProductLines,
-    
     PurchaseOrders: PurchaseOrders,
     
-    Manufacturers: Manufacturers,
+    Security: Security,
+    
+    UserExperience: UserExperience,
     
     Profile: Profile,
     
@@ -296,8 +293,6 @@ function PagesContent() {
                     
                     <Route path="/Tasks" element={<Tasks />} />
                     
-                    <Route path="/Products" element={<Products />} />
-                    
                     <Route path="/Quotes" element={<Quotes />} />
                     
                     <Route path="/Campaigns" element={<Campaigns />} />
@@ -306,11 +301,12 @@ function PagesContent() {
                     
                     <Route path="/Reports" element={<Reports />} />
                     
-                    <Route path="/ProductLines" element={<ProductLines />} />
-                    
                     <Route path="/PurchaseOrders" element={<PurchaseOrders />} />
+                    <Route path="/SalesOrders" element={<PurchaseOrders />} />
                     
-                    <Route path="/Manufacturers" element={<Manufacturers />} />
+                    <Route path="/Security" element={<Security />} />
+                    
+                    <Route path="/UserExperience" element={<UserExperience />} />
                     
                     <Route path="/Profile" element={<Profile />} />
                     

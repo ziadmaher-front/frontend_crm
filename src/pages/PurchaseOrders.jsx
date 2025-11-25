@@ -100,7 +100,7 @@ export default function PurchaseOrders() {
 
   const resetForm = () => {
     setFormData({
-      po_number: `PO-${Date.now()}`,
+      po_number: `SO-${Date.now()}`,
       manufacturer_id: "",
       status: "Draft",
       order_date: new Date().toISOString().split('T')[0],
@@ -234,7 +234,7 @@ export default function PurchaseOrders() {
         <div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent flex items-center gap-2">
             <ShoppingCart className="w-8 h-8 text-blue-500" />
-            Purchase Orders
+            Sales Orders
           </h1>
           <p className="text-gray-500 mt-1">Manage orders to manufacturers</p>
         </div>
@@ -393,8 +393,8 @@ export default function PurchaseOrders() {
         <Card className="border-none shadow-lg">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <ShoppingCart className="w-16 h-16 text-gray-300 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-600">No purchase orders yet</h3>
-            <p className="text-gray-400 mt-1">Create your first purchase order</p>
+            <h3 className="text-lg font-semibold text-gray-600">No sales orders yet</h3>
+            <p className="text-gray-400 mt-1">Create your first sales order</p>
           </CardContent>
         </Card>
       )}
@@ -402,12 +402,12 @@ export default function PurchaseOrders() {
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingPO ? 'Edit Purchase Order' : 'Create Purchase Order'}</DialogTitle>
+            <DialogTitle>{editingPO ? 'Edit Sales Order' : 'Create Sales Order'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="po_number">PO Number *</Label>
+                <Label htmlFor="po_number">Sales Order Number *</Label>
                 <Input
                   id="po_number"
                   value={formData.po_number}

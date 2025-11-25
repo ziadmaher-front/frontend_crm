@@ -20,10 +20,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { aiPredictiveAnalytics } from '@/services/aiPredictiveAnalytics';
-import { useLeads } from '@/hooks/useLeads';
-import { useDeals } from '@/hooks/useDeals';
-import { useContacts } from '@/hooks/useContacts';
-import { useAccounts } from '@/hooks/useAccounts';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
 
 const AIPredictiveDashboard = ({ className }) => {
   const [activeTab, setActiveTab] = useState('forecast');
@@ -39,11 +37,54 @@ const AIPredictiveDashboard = ({ className }) => {
   const [insights, setInsights] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
 
-  // Hooks for data
-  const { leads, isLoading: leadsLoading } = useLeads();
-  const { deals, isLoading: dealsLoading } = useDeals();
-  const { contacts, isLoading: contactsLoading } = useContacts();
-  const { accounts, isLoading: accountsLoading } = useAccounts();
+  // Fetch real data from backend
+  const { data: leads = [], isLoading: leadsLoading } = useQuery({
+    queryKey: ['ai-predictive-leads'],
+    queryFn: async () => {
+      try {
+        return await base44.entities.Lead.list();
+      } catch (error) {
+        console.error('Error fetching leads:', error);
+        return [];
+      }
+    },
+  });
+
+  const { data: deals = [], isLoading: dealsLoading } = useQuery({
+    queryKey: ['ai-predictive-deals'],
+    queryFn: async () => {
+      try {
+        return await base44.entities.Deal.list();
+      } catch (error) {
+        console.error('Error fetching deals:', error);
+        return [];
+      }
+    },
+  });
+
+  const { data: contacts = [], isLoading: contactsLoading } = useQuery({
+    queryKey: ['ai-predictive-contacts'],
+    queryFn: async () => {
+      try {
+        return await base44.entities.Contact.list();
+      } catch (error) {
+        console.error('Error fetching contacts:', error);
+        return [];
+      }
+    },
+  });
+
+  const { data: accounts = [], isLoading: accountsLoading } = useQuery({
+    queryKey: ['ai-predictive-accounts'],
+    queryFn: async () => {
+      try {
+        return await base44.entities.Account.list();
+      } catch (error) {
+        console.error('Error fetching accounts:', error);
+        return [];
+      }
+    },
+  });
 
   // Load predictive analytics data
   const loadPredictiveData = useCallback(async () => {

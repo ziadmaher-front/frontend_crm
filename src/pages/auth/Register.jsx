@@ -1,17 +1,73 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuthStore } from "@/stores";
+import { base44 } from "@/api/base44Client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Mail, Lock, User, Building2, AlertCircle, Eye, EyeOff, CheckCircle2, Briefcase, MapPin } from "lucide-react";
+import { Mail, Lock, User, Building2, AlertCircle, Eye, EyeOff, CheckCircle2, Briefcase, MapPin, Loader2, UserPlus, ArrowLeft } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 
 export default function Register() {
+  console.log('🚀 Register component rendering');
+  
   const navigate = useNavigate();
-  const { register, isLoading, error, clearError, isAuthenticated, user } = useAuthStore();
+  const [searchParams] = useSearchParams();
+  const userId = searchParams.get('userId'); // Optional: to pre-fill from existing user
+  const { register, isLoading, error, clearError, isAuthenticated, user, hasPermission } = useAuthStore();
+  
+  // Check if user is admin (has manage_users permission or is administrator)
+  // Also check if user has administrator profile or role
+  const isAdmin = React.useMemo(() => {
+    if (!user) return false;
+    
+    // Check permissions
+    if (hasPermission('manage_users') || hasPermission('manage_settings')) {
+      return true;
+    }
+    
+    // Check profile name (various possible field names)
+    const profileName = user.profile?.name || user.profileId?.name || user.profile_name || user.profileName;
+    if (profileName === 'Administrator') {
+      return true;
+    }
+    
+    // Check role name (various possible field names)
+    const roleName = user.role?.name || user.roleId?.name || user.role_name || user.roleName || user.role;
+    if (roleName === 'Administrator') {
+      return true;
+    }
+    
+    return false;
+  }, [user, hasPermission]);
+  
+  // Debug logging
+  useEffect(() => {
+    console.log('Register page - Admin check:', {
+      hasUser: !!user,
+      isAdmin,
+      userProfile: user?.profile,
+      userRole: user?.role,
+      userObject: user,
+      permissions: user?.permissions,
+      hasManageUsers: hasPermission('manage_users'),
+      hasManageSettings: hasPermission('manage_settings'),
+    });
+  }, [user, isAdmin, hasPermission]);
+  
+  // Log when admin interface should show
+  useEffect(() => {
+    if (isAdmin) {
+      console.log('Admin interface should be displayed');
+    } else {
+      console.log('Public registration form should be displayed');
+    }
+  }, [isAdmin]);
   
   const [formData, setFormData] = useState({
     firstName: "",
@@ -22,8 +78,8 @@ export default function Register() {
     companyName: "",
     workId: "",
     workLocation: "",
-    role: "",
-    roleInCrm: "",
+    profileId: "",
+    roleId: "",
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -31,20 +87,182 @@ export default function Register() {
   const [validationErrors, setValidationErrors] = useState({});
   const hasRedirected = useRef(false);
 
-  // Redirect to dashboard if already authenticated (only once)
-  // Check both state and localStorage for token to avoid race conditions
+  // Fetch profiles and roles from backend
+  // Note: The endpoint requires authentication, so we only fetch when authenticated
+  const queryClient = useQueryClient();
+  const token = localStorage.getItem('authToken');
+  const shouldFetch = isAuthenticated || !!token; // Fetch if authenticated or has token
+  
+  // Manual refetch function for testing
+  const handleManualRefetch = () => {
+    console.log('🔄 Manual refetch triggered');
+    queryClient.invalidateQueries({ queryKey: ['registerFormOptions'] });
+  };
+  
+  // Debug: Log token and auth status
   useEffect(() => {
-    const token = localStorage.getItem('authToken');
-    if (isAuthenticated && user && token && !hasRedirected.current) {
-      console.log('Register useEffect: Redirecting to dashboard', {
-        isAuthenticated,
-        hasUser: !!user,
-        hasToken: !!token,
-      });
-      hasRedirected.current = true;
-      navigate("/dashboard", { replace: true });
+    console.log('🔐 Register form - Auth check:', {
+      hasToken: !!token,
+      isAuthenticated,
+      isAdmin,
+      shouldFetch,
+      user: user ? { id: user.id, email: user.email } : null,
+    });
+  }, [token, isAuthenticated, isAdmin, shouldFetch, user]);
+  
+  const { data: registerFormOptions, isLoading: isLoadingOptions, error: optionsError } = useQuery({
+    queryKey: ['registerFormOptions', token, isAuthenticated], // Include both token and auth state in query key
+    queryFn: async () => {
+      console.log('🔵 [QUERY EXECUTING] Fetching register form options...');
+      console.log('🔵 Token available:', !!token);
+      console.log('🔵 Is authenticated:', isAuthenticated);
+      
+      try {
+        const result = await base44.orchestrator.getRegisterFormOptions();
+        console.log('✅ [SUCCESS] Register form options result:', result);
+        console.log('✅ Profiles array:', result?.profiles);
+        console.log('✅ Roles array:', result?.roles);
+        console.log('✅ Profiles count:', result?.profiles?.length || 0);
+        console.log('✅ Roles count:', result?.roles?.length || 0);
+        
+        // Log if arrays are empty
+        if (!result?.profiles?.length) {
+          console.warn('⚠️ [WARNING] No profiles returned from API');
+        }
+        if (!result?.roles?.length) {
+          console.warn('⚠️ [WARNING] No roles returned from API');
+        }
+        
+        return result;
+      } catch (error) {
+        // Log the full error for debugging
+        console.error('❌ [ERROR] Error fetching register form options:', error);
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Error stack:', error.stack);
+        // Return empty arrays on error
+        return { profiles: [], roles: [] };
+      }
+    },
+    enabled: shouldFetch, // Fetch if authenticated or has token
+    retry: 2, // Retry twice
+    staleTime: 2 * 60 * 1000, // Cache for 2 minutes (reduced from 5)
+    refetchOnWindowFocus: true, // Refetch when window regains focus
+    refetchOnMount: true, // Always refetch on mount
+  });
+  
+  // Debug: Log query state changes
+  useEffect(() => {
+    console.log('🔍 [QUERY STATE] Register form query state:', {
+      isLoading: isLoadingOptions,
+      hasData: !!registerFormOptions,
+      hasError: !!optionsError,
+      profilesCount: registerFormOptions?.profiles?.length || 0,
+      rolesCount: registerFormOptions?.roles?.length || 0,
+      profiles: registerFormOptions?.profiles,
+      roles: registerFormOptions?.roles,
+      error: optionsError,
+      enabled: shouldFetch,
+    });
+  }, [isLoadingOptions, registerFormOptions, optionsError, shouldFetch]);
+
+  // Fetch user data if userId is provided (for admin pre-filling)
+  const { data: userData, isLoading: isLoadingUser } = useQuery({
+    queryKey: ['user', userId],
+    queryFn: async () => {
+      if (!userId || !isAdmin) return null;
+      try {
+        return await base44.entities.User.get(userId);
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+        return null;
+      }
+    },
+    enabled: !!userId && !!isAdmin,
+  });
+
+  // Populate form when user data is loaded (for admin)
+  useEffect(() => {
+    if (userData && isAdmin) {
+      setFormData(prev => ({
+        ...prev,
+        firstName: userData.firstName || userData.first_name || userData.name?.split(' ')[0] || "",
+        lastName: userData.lastName || userData.last_name || userData.name?.split(' ').slice(1).join(' ') || "",
+        email: userData.email || "",
+        companyName: userData.companyName || userData.company || "",
+        workId: userData.workId || userData.work_id || "",
+        workLocation: userData.workLocation || userData.work_location || "",
+        profileId: userData.profileId || userData.profile_id || "",
+        roleId: userData.roleId || userData.role_id || "",
+      }));
     }
-  }, [isAuthenticated, user, navigate]);
+  }, [userData, isAdmin]);
+
+  const profiles = registerFormOptions?.profiles || [];
+  const roles = registerFormOptions?.roles || [];
+  
+  // Helper function to get role name from roleId
+  const getRoleName = (roleId) => {
+    if (!roleId) return 'Employee';
+    const role = roles.find(r => r.id === roleId);
+    return role?.name || 'Employee';
+  };
+  
+  // Debug: Log extracted profiles and roles
+  useEffect(() => {
+    console.log('📋 Extracted profiles and roles:', {
+      profilesCount: profiles.length,
+      rolesCount: roles.length,
+      profiles: profiles,
+      roles: roles,
+    });
+  }, [profiles, roles]);
+
+  // Create user mutation (for admin)
+  const createUserMutation = useMutation({
+    mutationFn: async (data) => {
+      return await base44.auth.register(data);
+    },
+    onSuccess: () => {
+      toast.success('User created successfully');
+      if (isAdmin) {
+        navigate('/settings');
+      }
+    },
+    onError: (error) => {
+      toast.error(error.message || 'Failed to create user');
+      setLocalError(error.message || 'Failed to create user');
+    },
+  });
+
+  // Redirect to dashboard if already authenticated (only once) - but NOT if admin
+  // Check both state and localStorage for token to avoid race conditions
+  // IMPORTANT: Only redirect if we're sure the user is NOT an admin
+  useEffect(() => {
+    // Skip redirect check entirely if user is admin
+    if (isAdmin) {
+      console.log('Register: User is admin, skipping redirect check');
+      return;
+    }
+    
+    const token = localStorage.getItem('authToken');
+    
+    // Only redirect if authenticated, has user, has token, and is NOT admin
+    // Add a small delay to ensure all checks are complete
+    const checkAndRedirect = setTimeout(() => {
+      if (isAuthenticated && user && token && !hasRedirected.current) {
+        console.log('Register useEffect: Redirecting to dashboard (user is not admin)', {
+          isAuthenticated,
+          hasUser: !!user,
+          hasToken: !!token,
+          isAdmin,
+        });
+        hasRedirected.current = true;
+        navigate("/dashboard", { replace: true });
+      }
+    }, 200); // Small delay to ensure isAdmin is calculated
+    
+    return () => clearTimeout(checkAndRedirect);
+  }, [isAuthenticated, user, navigate, isAdmin]);
 
   const validateForm = () => {
     const errors = {};
@@ -89,12 +307,12 @@ export default function Register() {
       errors.workLocation = "Work location is required";
     }
 
-    if (!formData.role.trim()) {
-      errors.role = "Role is required";
+    if (!formData.profileId.trim()) {
+      errors.profileId = "Profile is required";
     }
 
-    if (!formData.roleInCrm.trim()) {
-      errors.roleInCrm = "CRM role is required";
+    if (!formData.roleId.trim()) {
+      errors.roleId = "Role is required";
     }
 
     setValidationErrors(errors);
@@ -112,7 +330,15 @@ export default function Register() {
     }
 
     try {
-      await register({
+      // Combine firstName and lastName into name for backend
+      const fullName = `${formData.firstName || ''} ${formData.lastName || ''}`.trim();
+      
+      // Get role name from roleId
+      const roleName = getRoleName(formData.roleId);
+      
+      // Prepare registration data matching backend API structure
+      const registrationData = {
+        name: fullName,
         firstName: formData.firstName,
         lastName: formData.lastName,
         email: formData.email,
@@ -120,12 +346,21 @@ export default function Register() {
         companyName: formData.companyName,
         workId: formData.workId,
         workLocation: formData.workLocation,
-        role: formData.role,
-        roleInCrm: formData.roleInCrm,
-      });
-      // Reset redirect flag so useEffect can handle the redirect
-      hasRedirected.current = false;
-      // The useEffect will handle redirect when isAuthenticated becomes true
+        profileId: formData.profileId,
+        roleId: formData.roleId,
+        role: roleName, // Legacy role field (string name) - required by backend
+      };
+      
+      // If admin is creating a user, use createUserMutation
+      if (isAdmin) {
+        await createUserMutation.mutateAsync(registrationData);
+      } else {
+        // Regular user registration
+        await register(registrationData);
+        // Reset redirect flag so useEffect can handle the redirect
+        hasRedirected.current = false;
+        // The useEffect will handle redirect when isAuthenticated becomes true
+      }
     } catch (err) {
       setLocalError(err.message || "Registration failed. Please try again.");
     }
@@ -167,6 +402,402 @@ export default function Register() {
   };
 
   const passwordStrengthInfo = passwordStrength();
+
+  // Show admin interface if user is admin
+  if (isAdmin) {
+    if (isLoadingUser) {
+      return (
+        <div className="flex items-center justify-center min-h-screen">
+          <Loader2 className="w-8 h-8 animate-spin" />
+        </div>
+      );
+    }
+
+    return (
+      <div className="p-6 lg:p-8 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              onClick={() => navigate('/settings')}
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Settings
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold flex items-center gap-2">
+                <UserPlus className="w-8 h-8 text-indigo-500" />
+                Create New User
+              </h1>
+              <p className="text-gray-600 mt-1">
+                {userId ? 'Create user from existing data' : 'Add a new user to the system'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <Card className="border-none shadow-xl max-w-4xl mx-auto">
+          <CardHeader>
+            <CardTitle>User Information</CardTitle>
+            <CardDescription>
+              Fill in the details to create a new user account
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {(localError || error) && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{localError || error}</AlertDescription>
+                </Alert>
+              )}
+
+              {/* Name Fields */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="firstName">First name</Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                    <Input
+                      id="firstName"
+                      name="firstName"
+                      type="text"
+                      placeholder="John"
+                      value={formData.firstName}
+                      onChange={handleChange}
+                      className="pl-10"
+                      required
+                    />
+                  </div>
+                  {validationErrors.firstName && (
+                    <p className="text-xs text-red-600">{validationErrors.firstName}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="lastName">Last name</Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                    <Input
+                      id="lastName"
+                      name="lastName"
+                      type="text"
+                      placeholder="Doe"
+                      value={formData.lastName}
+                      onChange={handleChange}
+                      className="pl-10"
+                      required
+                    />
+                  </div>
+                  {validationErrors.lastName && (
+                    <p className="text-xs text-red-600">{validationErrors.lastName}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Email Field */}
+              <div className="space-y-2">
+                <Label htmlFor="email">Email address</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <Input
+                    id="email"
+                    name="email"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={formData.email}
+                    onChange={handleChange}
+                    className="pl-10"
+                    required
+                  />
+                </div>
+                {validationErrors.email && (
+                  <p className="text-xs text-red-600">{validationErrors.email}</p>
+                )}
+              </div>
+
+              {/* Company Name */}
+              <div className="space-y-2">
+                <Label htmlFor="companyName">Company name</Label>
+                <div className="relative">
+                  <Building2 className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <Input
+                    id="companyName"
+                    name="companyName"
+                    type="text"
+                    placeholder="Acme Inc."
+                    value={formData.companyName}
+                    onChange={handleChange}
+                    className="pl-10"
+                    required
+                  />
+                </div>
+                {validationErrors.companyName && (
+                  <p className="text-xs text-red-600">{validationErrors.companyName}</p>
+                )}
+              </div>
+
+              {/* Work ID */}
+              <div className="space-y-2">
+                <Label htmlFor="workId">Work ID</Label>
+                <div className="relative">
+                  <Briefcase className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <Input
+                    id="workId"
+                    name="workId"
+                    type="text"
+                    placeholder="EMP001"
+                    value={formData.workId}
+                    onChange={handleChange}
+                    className="pl-10"
+                    required
+                  />
+                </div>
+                {validationErrors.workId && (
+                  <p className="text-xs text-red-600">{validationErrors.workId}</p>
+                )}
+              </div>
+
+              {/* Work Location */}
+              <div className="space-y-2">
+                <Label htmlFor="workLocation">Work Location</Label>
+                <div className="relative">
+                  <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <Input
+                    id="workLocation"
+                    name="workLocation"
+                    type="text"
+                    placeholder="Cairo, Egypt"
+                    value={formData.workLocation}
+                    onChange={handleChange}
+                    className="pl-10"
+                    required
+                  />
+                </div>
+                {validationErrors.workLocation && (
+                  <p className="text-xs text-red-600">{validationErrors.workLocation}</p>
+                )}
+              </div>
+
+              {/* Profile and Role */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="profileId">Profile</Label>
+                    {optionsError && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleManualRefetch}
+                        className="text-xs h-6"
+                      >
+                        Retry
+                      </Button>
+                    )}
+                  </div>
+                  <Select
+                    value={formData.profileId}
+                    onValueChange={(value) => {
+                      setFormData((prev) => ({ ...prev, profileId: value }));
+                      if (validationErrors.profileId) {
+                        setValidationErrors((prev) => {
+                          const newErrors = { ...prev };
+                          delete newErrors.profileId;
+                          return newErrors;
+                        });
+                      }
+                    }}
+                    required
+                    disabled={isLoadingOptions}
+                  >
+                    <SelectTrigger id="profileId">
+                      <SelectValue placeholder={isLoadingOptions ? "Loading profiles..." : "Select profile"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {isLoadingOptions ? (
+                        <div className="flex items-center justify-center p-4">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        </div>
+                      ) : profiles.length === 0 ? (
+                        <div className="px-2 py-1.5 text-sm text-gray-500">
+                          {optionsError ? "Error loading profiles" : "No profiles available"}
+                        </div>
+                      ) : (
+                        profiles.map((profile) => (
+                          <SelectItem key={profile.id} value={profile.id}>
+                            {profile.name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {validationErrors.profileId && (
+                    <p className="text-xs text-red-600">{validationErrors.profileId}</p>
+                  )}
+                  {optionsError && (
+                    <p className="text-xs text-yellow-600">Could not load profiles. Click Retry to try again.</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="roleId">Role</Label>
+                    {optionsError && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleManualRefetch}
+                        className="text-xs h-6"
+                      >
+                        Retry
+                      </Button>
+                    )}
+                  </div>
+                  <Select
+                    value={formData.roleId}
+                    onValueChange={(value) => {
+                      setFormData((prev) => ({ ...prev, roleId: value }));
+                      if (validationErrors.roleId) {
+                        setValidationErrors((prev) => {
+                          const newErrors = { ...prev };
+                          delete newErrors.roleId;
+                          return newErrors;
+                        });
+                      }
+                    }}
+                    required
+                    disabled={isLoadingOptions}
+                  >
+                    <SelectTrigger id="roleId">
+                      <SelectValue placeholder={isLoadingOptions ? "Loading roles..." : "Select role"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {isLoadingOptions ? (
+                        <div className="flex items-center justify-center p-4">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        </div>
+                      ) : roles.length === 0 ? (
+                        <div className="px-2 py-1.5 text-sm text-gray-500">
+                          {optionsError ? "Error loading roles" : "No roles available"}
+                        </div>
+                      ) : (
+                        roles.map((role) => (
+                          <SelectItem key={role.id} value={role.id}>
+                            {role.name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {validationErrors.roleId && (
+                    <p className="text-xs text-red-600">{validationErrors.roleId}</p>
+                  )}
+                  {optionsError && (
+                    <p className="text-xs text-yellow-600">Could not load roles. Click Retry to try again.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Password Field */}
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <Input
+                    id="password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Create a strong password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    className="pl-10 pr-10"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+                {validationErrors.password && (
+                  <p className="text-xs text-red-600">{validationErrors.password}</p>
+                )}
+              </div>
+
+              {/* Confirm Password Field */}
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirm password</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <Input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    placeholder="Confirm your password"
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    className="pl-10 pr-10"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+                {validationErrors.confirmPassword && (
+                  <p className="text-xs text-red-600">{validationErrors.confirmPassword}</p>
+                )}
+              </div>
+
+              {/* Submit Button */}
+              <div className="flex gap-4 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => navigate('/settings')}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+                  disabled={isLoading || createUserMutation.isPending || isLoadingOptions}
+                >
+                  {isLoading || createUserMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Creating user...
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="w-4 h-4 mr-2" />
+                      Create User
+                    </>
+                  )}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-4">
@@ -333,50 +964,93 @@ export default function Register() {
                 )}
               </div>
 
-              {/* Role and CRM Role */}
+              {/* Profile and Role */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="role">Role</Label>
+                  <Label htmlFor="profileId">Profile</Label>
                   <Select
-                    value={formData.role}
-                    onValueChange={(value) => setFormData((prev) => ({ ...prev, role: value }))}
+                    value={formData.profileId}
+                    onValueChange={(value) => {
+                      setFormData((prev) => ({ ...prev, profileId: value }));
+                      if (validationErrors.profileId) {
+                        setValidationErrors((prev) => {
+                          const newErrors = { ...prev };
+                          delete newErrors.profileId;
+                          return newErrors;
+                        });
+                      }
+                    }}
                     required
+                    disabled={isLoadingOptions}
                   >
-                    <SelectTrigger id="role">
-                      <SelectValue placeholder="Select role" />
+                    <SelectTrigger id="profileId">
+                      <SelectValue placeholder={isLoadingOptions ? "Loading profiles..." : "Select profile"} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Sales Rep">Sales Rep</SelectItem>
-                      <SelectItem value="Sales Manager">Sales Manager</SelectItem>
-                      <SelectItem value="Account Manager">Account Manager</SelectItem>
-                      <SelectItem value="Sales Director">Sales Director</SelectItem>
-                      <SelectItem value="CEO">CEO</SelectItem>
+                      {isLoadingOptions ? (
+                        <div className="flex items-center justify-center p-4">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        </div>
+                      ) : profiles.length === 0 ? (
+                        <div className="px-2 py-1.5 text-sm text-gray-500">No profiles available</div>
+                      ) : (
+                        profiles.map((profile) => (
+                          <SelectItem key={profile.id} value={profile.id}>
+                            {profile.name}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
-                  {validationErrors.role && (
-                    <p className="text-xs text-red-600">{validationErrors.role}</p>
+                  {validationErrors.profileId && (
+                    <p className="text-xs text-red-600">{validationErrors.profileId}</p>
+                  )}
+                  {optionsError && (
+                    <p className="text-xs text-yellow-600">Could not load profiles. Please refresh the page.</p>
                   )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="roleInCrm">CRM Role</Label>
+                  <Label htmlFor="roleId">Role</Label>
                   <Select
-                    value={formData.roleInCrm}
-                    onValueChange={(value) => setFormData((prev) => ({ ...prev, roleInCrm: value }))}
+                    value={formData.roleId}
+                    onValueChange={(value) => {
+                      setFormData((prev) => ({ ...prev, roleId: value }));
+                      if (validationErrors.roleId) {
+                        setValidationErrors((prev) => {
+                          const newErrors = { ...prev };
+                          delete newErrors.roleId;
+                          return newErrors;
+                        });
+                      }
+                    }}
                     required
+                    disabled={isLoadingOptions}
                   >
-                    <SelectTrigger id="roleInCrm">
-                      <SelectValue placeholder="Select CRM role" />
+                    <SelectTrigger id="roleId">
+                      <SelectValue placeholder={isLoadingOptions ? "Loading roles..." : "Select role"} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="User">User</SelectItem>
-                      <SelectItem value="Manager">Manager</SelectItem>
-                      <SelectItem value="Admin">Admin</SelectItem>
-                      <SelectItem value="Super Admin">Super Admin</SelectItem>
+                      {isLoadingOptions ? (
+                        <div className="flex items-center justify-center p-4">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        </div>
+                      ) : roles.length === 0 ? (
+                        <div className="px-2 py-1.5 text-sm text-gray-500">No roles available</div>
+                      ) : (
+                        roles.map((role) => (
+                          <SelectItem key={role.id} value={role.id}>
+                            {role.name}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
-                  {validationErrors.roleInCrm && (
-                    <p className="text-xs text-red-600">{validationErrors.roleInCrm}</p>
+                  {validationErrors.roleId && (
+                    <p className="text-xs text-red-600">{validationErrors.roleId}</p>
+                  )}
+                  {optionsError && (
+                    <p className="text-xs text-yellow-600">Could not load roles. Please refresh the page.</p>
                   )}
                 </div>
               </div>

@@ -70,11 +70,26 @@ export default function QuickActions({ relatedTo }) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    base44.auth.me().then(user => {
-      setCurrentUser(user);
-      setTaskForm(prev => ({ ...prev, assigned_to: user.email }));
-      setActivityForm(prev => ({ ...prev, assigned_to: user.email }));
-    });
+    base44.auth.me()
+      .then(user => {
+        if (!user) {
+          // Silently handle missing user data - set empty email
+          setCurrentUser(null);
+          setTaskForm(prev => ({ ...prev, assigned_to: "" }));
+          setActivityForm(prev => ({ ...prev, assigned_to: "" }));
+          return;
+        }
+        setCurrentUser(user);
+        setTaskForm(prev => ({ ...prev, assigned_to: user.email || "" }));
+        setActivityForm(prev => ({ ...prev, assigned_to: user.email || "" }));
+      })
+      .catch(error => {
+        console.warn('Failed to fetch user data in QuickActions:', error);
+        // Set empty values on error
+        setCurrentUser(null);
+        setTaskForm(prev => ({ ...prev, assigned_to: "" }));
+        setActivityForm(prev => ({ ...prev, assigned_to: "" }));
+      });
   }, []);
 
   useEffect(() => {

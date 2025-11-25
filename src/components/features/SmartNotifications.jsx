@@ -186,30 +186,31 @@ const SmartNotifications = () => {
     return newNotifications;
   }, [overdueTasks, upcomingTasks, revenueMetrics, leads, metrics, settings]);
 
-  // Update notifications periodically
-  useEffect(() => {
-    if (!settings.enabled) return;
+  // Disabled automatic notification updates
+  // Notifications will only appear when triggered by user actions or real events
+  // useEffect(() => {
+  //   if (!settings.enabled) return;
 
-    const updateNotifications = () => {
-      const newNotifications = generateNotifications();
-      setNotifications(prev => {
-        // Merge new notifications with existing ones, avoiding duplicates
-        const existingIds = new Set(prev.map(n => n.id));
-        const uniqueNew = newNotifications.filter(n => !existingIds.has(n.id));
-        return [...prev, ...uniqueNew].slice(-20); // Keep only last 20 notifications
-      });
-    };
+  //   const updateNotifications = () => {
+  //     const newNotifications = generateNotifications();
+  //     setNotifications(prev => {
+  //       // Merge new notifications with existing ones, avoiding duplicates
+  //       const existingIds = new Set(prev.map(n => n.id));
+  //       const uniqueNew = newNotifications.filter(n => !existingIds.has(n.id));
+  //       return [...prev, ...uniqueNew].slice(-20); // Keep only last 20 notifications
+  //     });
+  //   };
 
-    updateNotifications();
+  //   updateNotifications();
 
-    const interval = setInterval(updateNotifications, 
-      settings.frequency === 'realtime' ? 30000 : // 30 seconds
-      settings.frequency === 'hourly' ? 3600000 : // 1 hour
-      86400000 // 1 day
-    );
+  //   const interval = setInterval(updateNotifications, 
+  //     settings.frequency === 'realtime' ? 30000 : // 30 seconds
+  //     settings.frequency === 'hourly' ? 3600000 : // 1 hour
+  //     86400000 // 1 day
+  //   );
 
-    return () => clearInterval(interval);
-  }, [generateNotifications, settings.enabled, settings.frequency]);
+  //   return () => clearInterval(interval);
+  // }, [generateNotifications, settings.enabled, settings.frequency]);
 
   const filteredNotifications = useMemo(() => {
     if (filter === 'all') return notifications;

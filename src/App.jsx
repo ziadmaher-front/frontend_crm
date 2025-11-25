@@ -12,6 +12,7 @@ const ThemeProvider = React.lazy(() => import("./hooks/useTheme").then(module =>
 
 // Import AccessibilityProvider and SkipLink directly (not lazy loaded) to avoid hook issues
 import { AccessibilityProvider, SkipLink } from "./components/AccessibilityEnhancer";
+import WelcomePopup from "./components/WelcomePopup";
 
 function App() {
   const { init, isAuthenticated, user, token } = useAuthStore();
@@ -41,6 +42,8 @@ function App() {
               <AppInitializer>
                 <AccessibilityProvider>
                   <SkipLink />
+                  {/* Welcome Popup - shows when site opens */}
+                  <WelcomePopup />
                   {/* Use the router with authentication */}
                   <AppRouter />
                   {/* Global toast portal */}

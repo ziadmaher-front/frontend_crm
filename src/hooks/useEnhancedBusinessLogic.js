@@ -410,25 +410,26 @@ export const useRealTimeNotifications = () => {
   const { notifications } = useEnhancedStore((state) => state?.realTime || { notifications: [] });
   const actions = useEnhancedActions();
 
-  // Simulate real-time notifications
-  useEffect(() => {
-    const interval = setInterval(() => {
-      // Randomly generate notifications
-      if (Math.random() < 0.1) { // 10% chance every 30 seconds
-        const notificationTypes = [
-          { type: 'info', title: 'New Lead', message: 'A new lead has been assigned to you.' },
-          { type: 'success', title: 'Deal Won', message: 'Congratulations! You closed a deal.' },
-          { type: 'warning', title: 'Task Due', message: 'You have a task due in 1 hour.' },
-          { type: 'info', title: 'Meeting Reminder', message: 'Your meeting starts in 15 minutes.' },
-        ];
-        
-        const randomNotification = notificationTypes[Math.floor(Math.random() * notificationTypes.length)];
-        actions.addNotification(randomNotification);
-      }
-    }, 30000); // Every 30 seconds
+  // Disabled automatic notification generation
+  // Notifications will only appear when triggered by user actions or real events
+  // useEffect(() => {
+  //   const interval = setInterval(() => {
+  //     // Randomly generate notifications
+  //     if (Math.random() < 0.1) { // 10% chance every 30 seconds
+  //       const notificationTypes = [
+  //         { type: 'info', title: 'New Lead', message: 'A new lead has been assigned to you.' },
+  //         { type: 'success', title: 'Deal Won', message: 'Congratulations! You closed a deal.' },
+  //         { type: 'warning', title: 'Task Due', message: 'You have a task due in 1 hour.' },
+  //         { type: 'info', title: 'Meeting Reminder', message: 'Your meeting starts in 15 minutes.' },
+  //       ];
+  //       
+  //       const randomNotification = notificationTypes[Math.floor(Math.random() * notificationTypes.length)];
+  //       actions.addNotification(randomNotification);
+  //     }
+  //   }, 30000); // Every 30 seconds
 
-    return () => clearInterval(interval);
-  }, [actions]);
+  //   return () => clearInterval(interval);
+  // }, [actions]);
 
   return {
     notifications: Array.isArray(notifications) ? notifications : [],

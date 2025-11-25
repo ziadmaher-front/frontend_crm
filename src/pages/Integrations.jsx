@@ -1,7 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import IntegrationHealth from "@/components/integrations/IntegrationHealth";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useIntegrations } from "@/hooks/integrations/useIntegrations";
+import { PROVIDER_CONFIGS, getProvidersByType, getProviderKeyFromName } from "@/services/integrations/ProviderConfig";
+import IntegrationService from "@/services/integrations/IntegrationService";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -229,37 +232,80 @@ export default function Integrations() {
   const [activeTab, setActiveTab] = useState('overview');
   const [showConnectDialog, setShowConnectDialog] = useState(false);
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
-  const [selectedIntegration] = useState(null);
+  const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
+  const [showIMAPDialog, setShowIMAPDialog] = useState(false);
+  const [selectedIntegration, setSelectedIntegration] = useState(null);
   const [selectedProvider, setSelectedProvider] = useState("");
   const [connectingIntegration, setConnectingIntegration] = useState(null);
+  const [apiKey, setApiKey] = useState("");
+  const [imapConfig, setImapConfig] = useState({
+    host: "",
+    port: 993,
+    secure: true,
+    username: "",
+    password: "",
+  });
+  const [smtpConfig, setSmtpConfig] = useState({
+    host: "",
+    port: 465,
+    secure: true,
+    username: "",
+    password: "",
+  });
+  const [email, setEmail] = useState("");
+
+  // Use the new integrations hook
+  const {
+    integrations,
+    isLoading,
+    error: integrationsError,
+    connectOAuth,
+    connectApiKey,
+    connectIMAP,
+    sync,
+    disconnect,
+    update,
+    testConnection,
+    isConnecting,
+    isSyncing,
+    isTesting,
+  } = useIntegrations();
+
+  // Get current user
   const [currentUser, setCurrentUser] = useState(null);
-
   const queryClient = useQueryClient();
-
+  
   React.useEffect(() => {
-    base44.auth.me().then(setCurrentUser);
+    base44.auth.me().then(setCurrentUser).catch(() => setCurrentUser(null));
   }, []);
 
-  const { data: integrations = [] } = useQuery({
-    queryKey: ['integrations'],
-    queryFn: () => base44.entities.Integration.list(),
-  });
+  // Filter integrations by current user
+  const userIntegrations = useMemo(() => {
+    return integrations.filter(i => i.status === 'Active');
+  }, [integrations]);
 
-  // Mock integration stats
-  const integrationStats = {
-    totalIntegrations: INTEGRATION_CATALOG.length,
-    activeIntegrations: integrations.filter(i => i.user_email === currentUser?.email && i.status === 'Active').length,
-    pendingIntegrations: 2,
-    failedIntegrations: 1,
-    totalWebhooks: 15,
-    activeWebhooks: 12,
-    totalAPIs: 5,
-    activeAPIs: 3,
-    totalSyncs: 2847,
-    lastSync: new Date().toISOString(),
-    syncErrors: 7,
-    uptime: 99.2
-  };
+  // Calculate stats from real data
+  const integrationStats = useMemo(() => {
+    return {
+      totalIntegrations: INTEGRATION_CATALOG.length,
+      activeIntegrations: userIntegrations.length,
+      pendingIntegrations: integrations.filter(i => i.status === 'Pending').length,
+      failedIntegrations: integrations.filter(i => i.status === 'Failed' || i.status === 'Error').length,
+      totalWebhooks: 0,
+      activeWebhooks: 0,
+      totalAPIs: 0,
+      activeAPIs: 0,
+      totalSyncs: 0,
+      lastSync: integrations.length > 0 
+        ? integrations.reduce((latest, i) => {
+            const syncDate = i.last_sync_date || i.lastSyncDate;
+            return syncDate && (!latest || syncDate > latest) ? syncDate : latest;
+          }, null) || new Date().toISOString()
+        : new Date().toISOString(),
+      syncErrors: 0,
+      uptime: 99.2
+    };
+  }, [integrations, userIntegrations]);
 
   const recentActivity = [
     {
@@ -328,84 +374,135 @@ export default function Integrations() {
     return `${actionMap[activity.action] || activity.action} ${activity.service}`;
   };
 
-  const createIntegrationMutation = useMutation({
-    mutationFn: (data) => base44.entities.Integration.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['integrations'] });
-      toast.success("Integration connected successfully");
-      setShowConnectDialog(false);
-    },
-  });
-
-  const updateIntegrationMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Integration.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['integrations'] });
-      toast.success("Integration settings updated");
-      setShowSettingsDialog(false);
-    },
-  });
-
-  const deleteIntegrationMutation = useMutation({
-    mutationFn: (id) => base44.entities.Integration.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['integrations'] });
-      toast.success("Integration disconnected");
-    },
-  });
-
   const handleConnect = (integrationType) => {
     const catalog = INTEGRATION_CATALOG.find(i => i.type === integrationType);
+    if (!catalog) {
+      toast.error('Integration type not found');
+      return;
+    }
+
     setConnectingIntegration(catalog);
-    setSelectedProvider(catalog.providers[0]);
-    setShowConnectDialog(true);
+    
+    // Get providers for this integration type from PROVIDER_CONFIGS
+    const providers = getProvidersByType(integrationType.toLowerCase());
+    
+    // If no providers found in config, try to map from catalog providers
+    let firstProviderKey = null;
+    if (providers.length > 0) {
+      firstProviderKey = providers[0].key;
+      setSelectedProvider(firstProviderKey);
+    } else if (catalog.providers && catalog.providers.length > 0) {
+      // Try to map catalog provider name to config key
+      const catalogProviderName = catalog.providers[0];
+      firstProviderKey = getProviderKeyFromName(catalogProviderName, integrationType);
+      if (firstProviderKey) {
+        setSelectedProvider(firstProviderKey);
+      } else {
+        // Fallback: use first catalog provider name as-is
+        setSelectedProvider(catalogProviderName);
+      }
+    } else {
+      setSelectedProvider("");
+    }
+
+    // Check if provider requires API key or IMAP/SMTP
+    const providerConfig = firstProviderKey ? PROVIDER_CONFIGS[firstProviderKey] : null;
+    if (providerConfig?.authType === 'api_key' || providerConfig?.requiresConfig) {
+      if (integrationType === 'Email' && providerConfig?.authType === 'imap_smtp') {
+        setShowIMAPDialog(true);
+      } else {
+        setShowApiKeyDialog(true);
+      }
+    } else if (providerConfig?.authType === 'oauth2' || !providerConfig) {
+      // Default to OAuth dialog if oauth2 or no config found
+      setShowConnectDialog(true);
+    } else {
+      setShowConnectDialog(true);
+    }
   };
 
-  const handleOAuthConnect = () => {
-    const mockIntegration = {
-      integration_type: connectingIntegration.type,
-      provider: selectedProvider,
-      user_email: currentUser?.email,
-      organization_id: currentUser?.primary_organization_id,
-      status: "Active",
-      connected_email: currentUser?.email,
-      sync_enabled: true,
-      sync_direction: "TwoWay",
-      last_sync_date: new Date().toISOString(),
-      settings: {
-        auto_create_activities: true,
-        sync_past_days: 30,
-        sync_future_days: 90,
-        track_email_opens: true,
-      },
-      access_token: "mock_token_" + Math.random().toString(36),
-      token_expires_at: new Date(Date.now() + 3600000).toISOString(),
+  const handleOAuthConnect = async () => {
+    if (!connectingIntegration || !selectedProvider) {
+      toast.error('Please select a provider');
+      return;
+    }
+
+    const providerConfig = PROVIDER_CONFIGS[selectedProvider];
+    if (!providerConfig) {
+      toast.error('Invalid provider selected');
+      return;
+    }
+
+    const settings = {
+      auto_create_activities: true,
+      sync_past_days: 30,
+      sync_future_days: 90,
+      track_email_opens: true,
     };
 
-    createIntegrationMutation.mutate(mockIntegration);
+    connectOAuth({
+      provider: selectedProvider,
+      type: connectingIntegration.type,
+      settings,
+    });
+    setShowConnectDialog(false);
+  };
+
+  const handleApiKeyConnect = () => {
+    if (!connectingIntegration || !selectedProvider || !apiKey) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    const settings = {};
+    connectApiKey({
+      provider: selectedProvider,
+      type: connectingIntegration.type,
+      apiKey,
+      settings,
+    });
+    setShowApiKeyDialog(false);
+    setApiKey("");
+  };
+
+  const handleIMAPConnect = () => {
+    if (!email || !imapConfig.host || !imapConfig.username || !imapConfig.password || 
+        !smtpConfig.host || !smtpConfig.username || !smtpConfig.password) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    const settings = {};
+    connectIMAP({
+      email,
+      imapConfig,
+      smtpConfig,
+      settings,
+    });
+    setShowIMAPDialog(false);
+    setEmail("");
+    setImapConfig({ host: "", port: 993, secure: true, username: "", password: "" });
+    setSmtpConfig({ host: "", port: 465, secure: true, username: "", password: "" });
   };
 
   const handleSync = (integrationId) => {
-    toast.loading("Syncing...");
-    setTimeout(() => {
-      updateIntegrationMutation.mutate({
-        id: integrationId,
-        data: { last_sync_date: new Date().toISOString() }
-      });
-      toast.success("Sync completed");
-    }, 2000);
+    sync(integrationId);
   };
 
   const handleDisconnect = (integrationId) => {
     if (confirm("Are you sure you want to disconnect this integration?")) {
-      deleteIntegrationMutation.mutate(integrationId);
+      disconnect(integrationId);
     }
   };
 
+  const handleTestConnection = (integrationId) => {
+    testConnection(integrationId);
+  };
+
   const getUserIntegration = (type) => {
+    // Backend should filter by user_id automatically, but we check here too
     return integrations.find(i => 
       i.integration_type === type && 
-      i.user_email === currentUser?.email &&
       i.status === "Active"
     );
   };
@@ -661,9 +758,10 @@ export default function Integrations() {
                         size="sm"
                         onClick={() => handleSync(userIntegration.id)}
                         className="flex-1 text-xs"
+                        disabled={isSyncing}
                       >
-                        <RefreshCw className="w-3 h-3 mr-1" />
-                        Sync
+                        <RefreshCw className={`w-3 h-3 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
+                        {isSyncing ? 'Syncing...' : 'Sync'}
                       </Button>
                       <Button
                         variant="outline"
@@ -694,25 +792,7 @@ export default function Integrations() {
   );
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Integrations</h1>
-          <p className="text-muted-foreground">
-            Manage all your third-party integrations, webhooks, and API connections
-          </p>
-        </div>
-        <div className="flex items-center space-x-2">
-          <Button variant="outline">
-            <Settings className="h-4 w-4 mr-2" />
-            Settings
-          </Button>
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Integration
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-6">
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="grid w-full grid-cols-4">
@@ -768,11 +848,28 @@ export default function Integrations() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {connectingIntegration?.providers.map((provider) => (
-                    <SelectItem key={provider} value={provider}>
-                      {provider}
-                    </SelectItem>
-                  ))}
+                  {(() => {
+                    // Get providers from PROVIDER_CONFIGS first
+                    const configProviders = getProvidersByType(connectingIntegration?.type?.toLowerCase() || '');
+                    if (configProviders.length > 0) {
+                      return configProviders
+                        .filter(p => p.authType === 'oauth2')
+                        .map((provider) => (
+                          <SelectItem key={provider.key} value={provider.key}>
+                            {provider.name}
+                          </SelectItem>
+                        ));
+                    }
+                    // Fallback to catalog providers with mapping
+                    return connectingIntegration?.providers.map((provider) => {
+                      const providerKey = getProviderKeyFromName(provider, connectingIntegration?.type);
+                      return (
+                        <SelectItem key={provider} value={providerKey || provider}>
+                          {provider}
+                        </SelectItem>
+                      );
+                    });
+                  })()}
                 </SelectContent>
               </Select>
             </div>
@@ -795,8 +892,195 @@ export default function Integrations() {
             <Button variant="outline" onClick={() => setShowConnectDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleOAuthConnect} className="bg-gradient-to-r from-indigo-600 to-purple-600">
-              Authorize & Connect
+            <Button 
+              onClick={handleOAuthConnect} 
+              className="bg-gradient-to-r from-indigo-600 to-purple-600"
+              disabled={isConnecting}
+            >
+              {isConnecting ? 'Connecting...' : 'Authorize & Connect'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* API Key Dialog */}
+      <Dialog open={showApiKeyDialog} onOpenChange={setShowApiKeyDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Connect {connectingIntegration?.type} - API Key</DialogTitle>
+            <DialogDescription>
+              Enter your API key to connect {selectedProvider}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Provider</Label>
+              <Select value={selectedProvider} onValueChange={setSelectedProvider}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {connectingIntegration && getProvidersByType(connectingIntegration.type)
+                    .filter(p => p.authType === 'api_key' || p.requiresConfig)
+                    .map((provider) => (
+                      <SelectItem key={provider.key} value={provider.key}>
+                        {provider.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>API Key</Label>
+              <Input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="Enter your API key"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowApiKeyDialog(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleApiKeyConnect}
+              disabled={isConnecting || !apiKey}
+            >
+              {isConnecting ? 'Connecting...' : 'Connect'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* IMAP/SMTP Dialog */}
+      <Dialog open={showIMAPDialog} onOpenChange={setShowIMAPDialog}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Connect Email - IMAP/SMTP</DialogTitle>
+            <DialogDescription>
+              Configure your email account using IMAP and SMTP settings
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Email Address</Label>
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="your.email@example.com"
+              />
+            </div>
+            
+            <div className="space-y-4 border-t pt-4">
+              <h3 className="font-semibold">IMAP Settings</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>IMAP Host</Label>
+                  <Input
+                    value={imapConfig.host}
+                    onChange={(e) => setImapConfig({ ...imapConfig, host: e.target.value })}
+                    placeholder="imap.example.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>IMAP Port</Label>
+                  <Input
+                    type="number"
+                    value={imapConfig.port}
+                    onChange={(e) => setImapConfig({ ...imapConfig, port: parseInt(e.target.value) || 993 })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>IMAP Username</Label>
+                  <Input
+                    value={imapConfig.username}
+                    onChange={(e) => setImapConfig({ ...imapConfig, username: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>IMAP Password</Label>
+                  <Input
+                    type="password"
+                    value={imapConfig.password}
+                    onChange={(e) => setImapConfig({ ...imapConfig, password: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="imap-secure"
+                  checked={imapConfig.secure}
+                  onChange={(e) => setImapConfig({ ...imapConfig, secure: e.target.checked })}
+                  className="rounded"
+                />
+                <Label htmlFor="imap-secure">Use SSL/TLS</Label>
+              </div>
+            </div>
+
+            <div className="space-y-4 border-t pt-4">
+              <h3 className="font-semibold">SMTP Settings</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>SMTP Host</Label>
+                  <Input
+                    value={smtpConfig.host}
+                    onChange={(e) => setSmtpConfig({ ...smtpConfig, host: e.target.value })}
+                    placeholder="smtp.example.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>SMTP Port</Label>
+                  <Input
+                    type="number"
+                    value={smtpConfig.port}
+                    onChange={(e) => setSmtpConfig({ ...smtpConfig, port: parseInt(e.target.value) || 465 })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>SMTP Username</Label>
+                  <Input
+                    value={smtpConfig.username}
+                    onChange={(e) => setSmtpConfig({ ...smtpConfig, username: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>SMTP Password</Label>
+                  <Input
+                    type="password"
+                    value={smtpConfig.password}
+                    onChange={(e) => setSmtpConfig({ ...smtpConfig, password: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="smtp-secure"
+                  checked={smtpConfig.secure}
+                  onChange={(e) => setSmtpConfig({ ...smtpConfig, secure: e.target.checked })}
+                  className="rounded"
+                />
+                <Label htmlFor="smtp-secure">Use SSL/TLS</Label>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowIMAPDialog(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleIMAPConnect}
+              disabled={isConnecting}
+            >
+              {isConnecting ? 'Connecting...' : 'Connect'}
             </Button>
           </DialogFooter>
         </DialogContent>

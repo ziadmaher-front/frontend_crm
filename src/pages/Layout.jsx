@@ -1,6 +1,7 @@
 
 import React from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useAuthStore } from "@/stores";
 import { createPageUrl } from "@/utils";
 import { 
   LayoutDashboard, 
@@ -11,11 +12,8 @@ import {
   CheckSquare,
   Activity,
   LogOut,
-  Package,
   FileText,
   Megaphone,
-  Briefcase,
-  Factory,
   ShoppingCart,
   Settings,
   User as UserIcon,
@@ -33,7 +31,8 @@ import {
   BarChart,
   Smartphone,
   Lock,
-  Target
+  Target,
+  Upload
 } from "lucide-react";
 import {
   Sidebar,
@@ -69,86 +68,72 @@ import { SkipToContent, FocusTrap, useKeyboardNavigation } from "@/components/Ac
 import GlobalSearch from "@/components/GlobalSearch";
 import CommandPalette from "@/components/CommandPalette";
 import AIAssistant from "@/components/AIAssistant";
+import ImportDialog from "@/components/ImportDialog";
 
 const navigationItems = [
   {
     title: "Dashboard",
-    url: createPageUrl("Dashboard"),
+    url: "/dashboard",
     icon: LayoutDashboard,
   },
   {
     title: "Leads",
-    url: createPageUrl("Leads"),
+    url: "/leads",
     icon: Sparkles,
   },
   {
     title: "Contacts",
-    url: createPageUrl("Contacts"),
+    url: "/contacts",
     icon: Users,
   },
   {
     title: "Accounts",
-    url: createPageUrl("Accounts"),
+    url: "/accounts",
     icon: Building2,
   },
   {
     title: "Deals",
-    url: createPageUrl("Deals"),
+    url: "/deals",
     icon: TrendingUp,
   },
   {
     title: "Forecasting",
-    url: createPageUrl("Forecasting"),
+    url: "/forecasting",
     icon: BarChart3,
   },
   {
-    title: "Products",
-    url: createPageUrl("Products"),
-    icon: Package,
-  },
-  {
-    title: "Product Lines",
-    url: createPageUrl("ProductLines"),
-    icon: Briefcase,
-  },
-  {
-    title: "Manufacturers",
-    url: createPageUrl("Manufacturers"),
-    icon: Factory,
-  },
-  {
-    title: "Purchase Orders",
-    url: createPageUrl("PurchaseOrders"),
+    title: "Sales Orders",
+    url: "/sales-orders",
     icon: ShoppingCart,
   },
   {
     title: "Quotes",
-    url: createPageUrl("Quotes"),
+    url: "/quotes",
     icon: FileText,
   },
   {
     title: "Campaigns",
-    url: createPageUrl("Campaigns"),
+    url: "/campaigns",
     icon: Megaphone,
   },
   {
     title: "Activities",
-    url: createPageUrl("Activities"),
+    url: "/activities",
     icon: Activity,
   },
   {
     title: "Tasks",
-    url: createPageUrl("Tasks"),
+    url: "/tasks",
     icon: CheckSquare,
   },
   {
     title: "Security",
-    url: createPageUrl("Security"),
+    url: "/security",
     icon: Shield,
   },
   {
     title: "User Experience",
-    url: createPageUrl("UserExperience"),
+    url: "/user-experience",
     icon: Eye,
   },
 ];
@@ -156,7 +141,7 @@ const navigationItems = [
 const aiNavigationItems = [
   {
     title: "AI Dashboard",
-    url: createPageUrl("AIDashboard"),
+    url: "/ai-dashboard",
     icon: Brain,
   },
   {
@@ -255,27 +240,27 @@ const aiNavigationItems = [
 const advancedCrmItems = [
   {
     title: "AI Lead Qualification",
-    url: createPageUrl("AILeadQualification"),
+    url: "/ai-lead-qualification",
     icon: Brain,
   },
   {
     title: "Deal Insights",
-    url: createPageUrl("IntelligentDealInsights"),
+    url: "/intelligent-deal-insights",
     icon: TrendingUp,
   },
   {
     title: "AI Assistant",
-    url: createPageUrl("ConversationalAI"),
+    url: "/conversational-ai",
     icon: MessageSquare,
   },
   {
     title: "Real-Time BI",
-    url: createPageUrl("RealTimeBI"),
+    url: "/real-time-bi",
     icon: BarChart3,
   },
   {
     title: "Workflow Builder",
-    url: createPageUrl("WorkflowAutomation"),
+    url: "/workflow-automation",
     icon: Bot,
   },
   {
@@ -429,9 +414,6 @@ const PAGE_TITLES = {
   "Accounts": "Accounts",
   "Deals": "Deals Pipeline",
   "Forecasting": "Sales Forecasting",
-  "Products": "Products",
-  "ProductLines": "Product Lines",
-  "Manufacturers": "Manufacturers",
   "PurchaseOrders": "Purchase Orders",
   "Quotes": "Quotations & RFQs",
   "Campaigns": "Campaigns",
@@ -499,6 +481,7 @@ export default function Layout({ children }) {
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [commandOpen, setCommandOpen] = React.useState(false);
   const [aiAssistantOpen, setAiAssistantOpen] = React.useState(false);
+  const [importDialogOpen, setImportDialogOpen] = React.useState(false);
   const isMobile = useIsMobile();
 
   // Initialize keyboard navigation
@@ -548,8 +531,26 @@ export default function Layout({ children }) {
 
   const primaryOrg = organizations.find(org => org.id === user?.primary_organization_id) || organizations[0];
 
-  const handleLogout = () => {
-    base44.auth.logout();
+  const navigate = useNavigate();
+  const { logout } = useAuthStore();
+  
+  const handleLogout = async () => {
+    console.log('Logging out...');
+    try {
+      // Clear auth state (this also clears localStorage token)
+      logout();
+      // Navigate to login
+      navigate('/auth/login', { replace: true });
+      // Force page reload to clear all state and cached data
+      setTimeout(() => {
+        window.location.href = '/auth/login';
+      }, 100);
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Even if there's an error, clear everything and redirect
+      localStorage.removeItem('authToken');
+      window.location.href = '/auth/login';
+    }
   };
 
   const getCurrentPageTitle = () => {
@@ -825,19 +826,15 @@ export default function Layout({ children }) {
                 <DropdownMenuSeparator className={isDark ? 'bg-white/10' : 'bg-gray-200'} />
                 <DropdownMenuItem className={isDark ? 'text-white hover:bg-white/10 focus:bg-white/10' : 'text-black hover:bg-black/10 focus:bg-black/10'}>
                   <UserIcon className="w-4 h-4 mr-2" />
-                  <Link to={createPageUrl("Profile")} className={isDark ? 'text-white' : 'text-black'}>Profile</Link>
+                  <Link to="/profile" className={isDark ? 'text-white' : 'text-black'}>Profile</Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem className={isDark ? 'text-white hover:bg-white/10 focus:bg-white/10' : 'text-black hover:bg-black/10 focus:bg-black/10'}>
                   <Settings className="w-4 h-4 mr-2" />
-                  <Link to={createPageUrl("Settings")} className={isDark ? 'text-white' : 'text-black'}>Settings</Link>
+                  <Link to="/settings" className={isDark ? 'text-white' : 'text-black'}>Settings</Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem className={isDark ? 'text-white hover:bg-white/10 focus:bg-white/10' : 'text-black hover:bg-black/10 focus:bg-black/10'}>
                   <BarChart3 className="w-4 h-4 mr-2" />
-                  <Link to={createPageUrl("Reports")} className={isDark ? 'text-white' : 'text-black'}>Reports</Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem className={isDark ? 'bg-white/10 text-white hover:bg-white/20 focus:bg-white/20' : 'bg-black/10 text-black hover:bg-black/20 focus:bg-black/20'}>
-                  <Settings className="w-4 h-4 mr-2" />
-                  <Link to={createPageUrl("Integrations")} className={`${isDark ? 'text-white' : 'text-black'} font-medium`}>Integrations</Link>
+                  <Link to="/reports" className={isDark ? 'text-white' : 'text-black'}>Reports</Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className={isDark ? 'bg-white/10' : 'bg-gray-200'} />
                 <DropdownMenuItem onClick={handleLogout} className={isDark ? 'text-red-400 hover:bg-red-500/20 focus:bg-red-500/20' : 'text-red-600 hover:bg-red-50 focus:bg-red-50'}>
@@ -932,6 +929,17 @@ export default function Layout({ children }) {
                   </kbd>
                 </Button>
 
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setImportDialogOpen(true)}
+                  className="gap-2"
+                  aria-label="Import data from Excel"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span className="hidden md:inline">Import</span>
+                </Button>
+
                 <ThemeToggle />
                 
                 {user?.profile_photo_url ? (
@@ -988,6 +996,11 @@ export default function Layout({ children }) {
       <AIAssistant 
         isOpen={aiAssistantOpen} 
         onToggle={() => setAiAssistantOpen(!aiAssistantOpen)} 
+      />
+      
+      <ImportDialog 
+        open={importDialogOpen} 
+        onOpenChange={setImportDialogOpen} 
       />
     </SidebarProvider>
     </>

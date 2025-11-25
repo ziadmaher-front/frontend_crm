@@ -526,6 +526,35 @@ class PerformanceMonitor {
     return JSON.stringify(exportData, null, 2);
   }
 
+  // Performance API wrappers
+  mark(name) {
+    if (typeof window !== 'undefined' && window.performance && window.performance.mark) {
+      try {
+        window.performance.mark(name);
+      } catch (error) {
+        console.warn('Performance mark failed:', error);
+      }
+    }
+  }
+
+  measure(name, startMark, endMark) {
+    if (typeof window !== 'undefined' && window.performance && window.performance.measure) {
+      try {
+        if (endMark) {
+          window.performance.measure(name, startMark, endMark);
+        } else if (startMark) {
+          // If only startMark is provided, measure from that mark to now
+          window.performance.measure(name, startMark);
+        } else {
+          // If only name is provided, measure from the mark with the same name
+          window.performance.measure(name, name);
+        }
+      } catch (error) {
+        // Silently handle errors - performance monitoring is optional
+      }
+    }
+  }
+
   getEnvNumber(envKey) {
     try {
       const rawValue = import.meta?.env?.[envKey];

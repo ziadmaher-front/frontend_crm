@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,9 +36,45 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
+import RolesManagement from "@/components/RolesManagement";
+import ProfilesManagement from "@/components/ProfilesManagement";
+import Integrations from "@/pages/Integrations";
+import { UserPlus } from "lucide-react";
+import { useAuthStore } from "@/stores";
 
 export default function Settings() {
-  const [currentUser, setCurrentUser] = useState(null);
+  const navigate = useNavigate();
+  const { user, hasPermission } = useAuthStore();
+  
+  // Check if user is admin
+  const isAdmin = useMemo(() => {
+    if (!user) return false;
+    
+    // Check permissions
+    try {
+      if (hasPermission && (hasPermission('manage_users') || hasPermission('manage_settings'))) {
+        return true;
+      }
+    } catch (e) {
+      console.warn('Error checking permissions:', e);
+    }
+    
+    // Check profile name
+    const profileName = user.profile?.name || user.profileId?.name || user.profile_name || user.profileName;
+    if (profileName && (profileName.toLowerCase() === 'administrator' || profileName.toLowerCase().includes('admin'))) {
+      return true;
+    }
+    
+    // Check role name
+    const roleName = user.role?.name || user.roleId?.name || user.role_name || user.roleName || user.role;
+    if (roleName && (roleName.toLowerCase() === 'administrator' || roleName.toLowerCase().includes('admin'))) {
+      return true;
+    }
+    
+    return false;
+  }, [user, hasPermission]);
+  
   const [showWorkflowDialog, setShowWorkflowDialog] = useState(false);
   const [editingWorkflow, setEditingWorkflow] = useState(null);
   const [workflowData, setWorkflowData] = useState({
@@ -48,13 +84,59 @@ export default function Settings() {
     action_type: "Send Email",
     is_active: true,
   });
+  const [profileFormData, setProfileFormData] = useState({
+    full_name: "",
+    email: "",
+    phone: "",
+    mobile: "",
+    job_title: "",
+    department: "",
+    bio: "",
+    company: "",
+    workId: "",
+    workLocation: "",
+    profileId: "",
+    roleId: "",
+  });
 
   const { theme, toggleTheme, isDark } = useTheme();
   const queryClient = useQueryClient();
 
+  // Fetch current user data from backend
+  const { data: currentUser, isLoading: isLoadingUser, error: userError } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: async () => {
+      try {
+        const userData = await base44.auth.me();
+        console.log('Fetched user data from backend:', userData);
+        return userData;
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+        throw error;
+      }
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+
+  // Update form data when user data is loaded
   useEffect(() => {
-    base44.auth.me().then(setCurrentUser);
-  }, []);
+    if (currentUser) {
+      setProfileFormData({
+        full_name: currentUser.full_name || currentUser.name || `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || "",
+        email: currentUser.email || "",
+        phone: currentUser.phone || currentUser.phone_number || "",
+        mobile: currentUser.mobile || currentUser.mobile_phone || "",
+        job_title: currentUser.job_title || currentUser.jobTitle || currentUser.position || "",
+        department: currentUser.department || "",
+        bio: currentUser.bio || currentUser.biography || "",
+        company: currentUser.company || currentUser.companyName || currentUser.company_name || "",
+        workId: currentUser.workId || currentUser.work_id || "",
+        workLocation: currentUser.workLocation || currentUser.work_location || "",
+        profileId: currentUser.profileId || currentUser.profile_id || currentUser.profile?.id || "",
+        roleId: currentUser.roleId || currentUser.role_id || currentUser.role?.id || "",
+      });
+    }
+  }, [currentUser]);
 
   const { data: automationRules = [] } = useQuery({
     queryKey: ['automationRules'],
@@ -93,10 +175,17 @@ export default function Settings() {
   const updateUserMutation = useMutation({
     mutationFn: (data) => base44.auth.updateMe(data),
     onSuccess: () => {
-      toast.success("Settings updated successfully");
-      base44.auth.me().then(setCurrentUser);
+      toast.success("Profile updated successfully");
+      queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to update profile");
     },
   });
+
+  const handleProfileSubmit = () => {
+    updateUserMutation.mutate(profileFormData);
+  };
 
   const resetWorkflowForm = () => {
     setWorkflowData({
@@ -152,18 +241,32 @@ export default function Settings() {
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-          <SettingsIcon className="w-8 h-8 text-indigo-500" />
-          Settings
-        </h1>
-        <p className="text-gray-600 mt-1">Manage your account, preferences, and automations</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+            <SettingsIcon className="w-8 h-8 text-indigo-500" />
+            Settings
+          </h1>
+          <p className="text-gray-600 mt-1">Manage your account, preferences, and automations</p>
+        </div>
+        {isAdmin && (
+          <Button
+            onClick={() => navigate('/auth/register')}
+            className="bg-gradient-to-r from-indigo-600 to-purple-600"
+          >
+            <UserPlus className="w-4 h-4 mr-2" />
+            Create User
+          </Button>
+        )}
       </div>
 
       <Tabs defaultValue="profile" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="w-full flex flex-wrap gap-1">
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
+          <TabsTrigger value="profiles">Profiles</TabsTrigger>
+          <TabsTrigger value="roles">Roles</TabsTrigger>
+          <TabsTrigger value="integrations">Integrations</TabsTrigger>
           <TabsTrigger value="automation">Automation</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
         </TabsList>
@@ -178,50 +281,239 @@ export default function Settings() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Full Name</Label>
-                  <Input defaultValue={currentUser?.full_name} />
+              {isLoadingUser ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input defaultValue={currentUser?.email} disabled />
+              ) : userError ? (
+                <div className="text-center py-8 text-red-600">
+                  <p>Error loading profile information. Please try again.</p>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Phone</Label>
-                  <Input defaultValue={currentUser?.phone} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Mobile</Label>
-                  <Input defaultValue={currentUser?.mobile} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Job Title</Label>
-                  <Input defaultValue={currentUser?.job_title} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Department</Label>
-                  <Input defaultValue={currentUser?.department} />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Bio</Label>
-                <Textarea defaultValue={currentUser?.bio} rows={3} />
-              </div>
-              <Button onClick={() => updateUserMutation.mutate({
-                full_name: currentUser?.full_name,
-                phone: currentUser?.phone,
-                mobile: currentUser?.mobile,
-                job_title: currentUser?.job_title,
-                department: currentUser?.department,
-                bio: currentUser?.bio,
-              })}>
-                Save Changes
-              </Button>
+              ) : (
+                <>
+                  {/* Display Current User Data (Read-only) */}
+                  {currentUser && (
+                    <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-3">Current Profile Data</h3>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <span className="font-medium text-gray-600">User ID:</span>
+                          <span className="ml-2 text-gray-900">{currentUser.id || "N/A"}</span>
+                        </div>
+                        <div>
+                          <span className="font-medium text-gray-600">Email:</span>
+                          <span className="ml-2 text-gray-900">{currentUser.email || "N/A"}</span>
+                        </div>
+                        {currentUser.firstName && (
+                          <div>
+                            <span className="font-medium text-gray-600">First Name:</span>
+                            <span className="ml-2 text-gray-900">{currentUser.firstName}</span>
+                          </div>
+                        )}
+                        {currentUser.lastName && (
+                          <div>
+                            <span className="font-medium text-gray-600">Last Name:</span>
+                            <span className="ml-2 text-gray-900">{currentUser.lastName}</span>
+                          </div>
+                        )}
+                        {currentUser.full_name && (
+                          <div>
+                            <span className="font-medium text-gray-600">Full Name:</span>
+                            <span className="ml-2 text-gray-900">{currentUser.full_name}</span>
+                          </div>
+                        )}
+                        {currentUser.phone && (
+                          <div>
+                            <span className="font-medium text-gray-600">Phone:</span>
+                            <span className="ml-2 text-gray-900">{currentUser.phone}</span>
+                          </div>
+                        )}
+                        {currentUser.mobile && (
+                          <div>
+                            <span className="font-medium text-gray-600">Mobile:</span>
+                            <span className="ml-2 text-gray-900">{currentUser.mobile}</span>
+                          </div>
+                        )}
+                        {currentUser.job_title && (
+                          <div>
+                            <span className="font-medium text-gray-600">Job Title:</span>
+                            <span className="ml-2 text-gray-900">{currentUser.job_title}</span>
+                          </div>
+                        )}
+                        {currentUser.department && (
+                          <div>
+                            <span className="font-medium text-gray-600">Department:</span>
+                            <span className="ml-2 text-gray-900">{currentUser.department}</span>
+                          </div>
+                        )}
+                        {currentUser.company && (
+                          <div>
+                            <span className="font-medium text-gray-600">Company:</span>
+                            <span className="ml-2 text-gray-900">{currentUser.company}</span>
+                          </div>
+                        )}
+                        {currentUser.workId && (
+                          <div>
+                            <span className="font-medium text-gray-600">Work ID:</span>
+                            <span className="ml-2 text-gray-900">{currentUser.workId}</span>
+                          </div>
+                        )}
+                        {currentUser.workLocation && (
+                          <div>
+                            <span className="font-medium text-gray-600">Work Location:</span>
+                            <span className="ml-2 text-gray-900">{currentUser.workLocation}</span>
+                          </div>
+                        )}
+                        {currentUser.profile?.name && (
+                          <div>
+                            <span className="font-medium text-gray-600">Profile:</span>
+                            <span className="ml-2 text-gray-900">{currentUser.profile.name}</span>
+                          </div>
+                        )}
+                        {currentUser.role?.name && (
+                          <div>
+                            <span className="font-medium text-gray-600">Role:</span>
+                            <span className="ml-2 text-gray-900">{currentUser.role.name}</span>
+                          </div>
+                        )}
+                        {currentUser.createdAt && (
+                          <div>
+                            <span className="font-medium text-gray-600">Created:</span>
+                            <span className="ml-2 text-gray-900">{new Date(currentUser.createdAt).toLocaleDateString()}</span>
+                          </div>
+                        )}
+                        {currentUser.updatedAt && (
+                          <div>
+                            <span className="font-medium text-gray-600">Last Updated:</span>
+                            <span className="ml-2 text-gray-900">{new Date(currentUser.updatedAt).toLocaleDateString()}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <h3 className="text-lg font-semibold mb-4">Edit Profile Information</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="full_name">Full Name</Label>
+                      <Input
+                        id="full_name"
+                        value={profileFormData.full_name}
+                        onChange={(e) => setProfileFormData({ ...profileFormData, full_name: e.target.value })}
+                        placeholder="Enter your full name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={profileFormData.email}
+                        disabled
+                        className="bg-gray-50"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="phone">Phone</Label>
+                      <Input
+                        id="phone"
+                        value={profileFormData.phone}
+                        onChange={(e) => setProfileFormData({ ...profileFormData, phone: e.target.value })}
+                        placeholder="Enter phone number"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="mobile">Mobile</Label>
+                      <Input
+                        id="mobile"
+                        value={profileFormData.mobile}
+                        onChange={(e) => setProfileFormData({ ...profileFormData, mobile: e.target.value })}
+                        placeholder="Enter mobile number"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="job_title">Job Title</Label>
+                      <Input
+                        id="job_title"
+                        value={profileFormData.job_title}
+                        onChange={(e) => setProfileFormData({ ...profileFormData, job_title: e.target.value })}
+                        placeholder="Enter job title"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="department">Department</Label>
+                      <Input
+                        id="department"
+                        value={profileFormData.department}
+                        onChange={(e) => setProfileFormData({ ...profileFormData, department: e.target.value })}
+                        placeholder="Enter department"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="company">Company</Label>
+                      <Input
+                        id="company"
+                        value={profileFormData.company}
+                        onChange={(e) => setProfileFormData({ ...profileFormData, company: e.target.value })}
+                        placeholder="Enter company name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="workId">Work ID</Label>
+                      <Input
+                        id="workId"
+                        value={profileFormData.workId}
+                        onChange={(e) => setProfileFormData({ ...profileFormData, workId: e.target.value })}
+                        placeholder="Enter work ID"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="workLocation">Work Location</Label>
+                    <Input
+                      id="workLocation"
+                      value={profileFormData.workLocation}
+                      onChange={(e) => setProfileFormData({ ...profileFormData, workLocation: e.target.value })}
+                      placeholder="Enter work location"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="bio">Bio</Label>
+                    <Textarea
+                      id="bio"
+                      value={profileFormData.bio}
+                      onChange={(e) => setProfileFormData({ ...profileFormData, bio: e.target.value })}
+                      rows={3}
+                      placeholder="Enter your bio"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 pt-2">
+                    <Button
+                      onClick={handleProfileSubmit}
+                      disabled={updateUserMutation.isPending}
+                      className="bg-gradient-to-r from-indigo-600 to-purple-600"
+                    >
+                      {updateUserMutation.isPending ? "Saving..." : "Save Changes"}
+                    </Button>
+                    {currentUser?.profileId && (
+                      <Badge variant="outline" className="ml-2">
+                        Profile ID: {currentUser.profileId || currentUser.profile_id || currentUser.profile?.id || "N/A"}
+                      </Badge>
+                    )}
+                    {currentUser?.roleId && (
+                      <Badge variant="outline" className="ml-2">
+                        Role ID: {currentUser.roleId || currentUser.role_id || currentUser.role?.id || "N/A"}
+                      </Badge>
+                    )}
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -279,6 +571,21 @@ export default function Settings() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Profiles Tab */}
+        <TabsContent value="profiles" className="space-y-6">
+          <ProfilesManagement />
+        </TabsContent>
+
+        {/* Roles Tab */}
+        <TabsContent value="roles" className="space-y-6">
+          <RolesManagement />
+        </TabsContent>
+
+        {/* Integrations Tab */}
+        <TabsContent value="integrations" className="space-y-6">
+          <Integrations />
         </TabsContent>
 
         {/* Automation Tab */}

@@ -167,16 +167,12 @@ export const useAuthStore = create()(
         },
 
         logout: () => {
-          // Clear token from localStorage
+          console.log('Logout called - clearing all auth data');
+          
+          // Clear token from localStorage first
           localStorage.removeItem('authToken');
           
-          // Call backend logout if needed
-          import('@/api/base44Client').then(({ base44 }) => {
-            base44.auth.logout().catch(err => {
-              console.warn('Logout error:', err);
-            });
-          });
-          
+          // Clear all state
           set((state) => {
             state.user = null;
             state.permissions = [];
@@ -184,6 +180,17 @@ export const useAuthStore = create()(
             state.error = null;
             state.token = null;
           });
+          
+          // Call backend logout if needed (don't wait for it)
+          import('@/api/base44Client').then(({ base44 }) => {
+            base44.auth.logout().catch(err => {
+              console.warn('Backend logout error (non-critical):', err);
+            });
+          }).catch(err => {
+            console.warn('Error importing base44Client for logout:', err);
+          });
+          
+          console.log('Logout complete - state cleared');
         },
 
         clearError: () => {

@@ -57,6 +57,9 @@ export default function Quotes() {
   // RFQ States
   const [showRFQDialog, setShowRFQDialog] = useState(false);
   const [editingRFQ, setEditingRFQ] = useState(null);
+  // Hardcoded product lines list
+  const PRODUCT_LINES = ["pathology", "molecular Biology", "life sciences"];
+
   const [rfqFormData, setRFQFormData] = useState({
     rfq_name: "",
     rfq_number: "", // User-provided, required
@@ -64,6 +67,7 @@ export default function Quotes() {
     contact_id: "", // Optional - either contact_id OR lead_id required
     lead_id: "", // Optional - either contact_id OR lead_id required
     vendors: "", // Optional string
+    productLine: "", // Changed from product_line_id (UUID) to productLine (string)
     line_items: [],
     currency: "USD", // EGP, USD, or AED only
     status: "SUBMITTED", // COMPLETED or SUBMITTED (default SUBMITTED)
@@ -90,13 +94,30 @@ export default function Quotes() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    base44.auth.me().then(user => {
-      setCurrentUser(user);
-      setRFQFormData(prev => ({
-        ...prev,
-        currency: user.default_currency || "USD"
-      }));
-    });
+    base44.auth.me()
+      .then(user => {
+        if (!user) {
+          // Silently handle missing user data - set default currency
+          setRFQFormData(prev => ({
+            ...prev,
+            currency: "USD"
+          }));
+          return;
+        }
+        setCurrentUser(user);
+        setRFQFormData(prev => ({
+          ...prev,
+          currency: user.default_currency || "USD"
+        }));
+      })
+      .catch(error => {
+        console.warn('Failed to fetch user data:', error);
+        // Set default currency on error
+        setRFQFormData(prev => ({
+          ...prev,
+          currency: "USD"
+        }));
+      });
   }, []);
 
   const { data: rfqs = [] } = useQuery({
@@ -134,10 +155,6 @@ export default function Quotes() {
     queryFn: () => base44.entities.Manufacturer.list(),
   });
 
-  const { data: productLines = [] } = useQuery({
-    queryKey: ['productLines'],
-    queryFn: () => base44.entities.ProductLine.list(),
-  });
 
   const { data: templates = [] } = useQuery({
     queryKey: ['quoteTemplates'],
@@ -159,16 +176,18 @@ export default function Quotes() {
     }
 
     // Filter manufacturers by user's product lines
-    const userProductLineIds = currentUser.product_line_ids || [];
+    const userProductLines = currentUser.product_lines || currentUser.productLines || [];
     return manufacturers.filter(m => 
       m.is_active && 
-      m.product_line_ids?.some(plId => userProductLineIds.includes(plId))
+      m.productLines?.some(pl => userProductLines.includes(pl)) ||
+      m.product_lines?.some(pl => userProductLines.includes(pl))
     );
   };
 
   // Filter products based on manufacturer and user's product lines
   const getFilteredProducts = () => {
-    let filteredProducts = products.filter(p => p.is_active);
+    // Filter by is_active if available, otherwise show all products
+    let filteredProducts = products.filter(p => p.is_active !== false && p.isActive !== false);
 
     // Filter by manufacturer if selected (using manufacturer relation or manufacturerId)
     if (rfqFormData.manufacturer_id) {
@@ -180,9 +199,9 @@ export default function Quotes() {
     }
 
     // Filter by product line if selected
-    if (rfqFormData.product_line_id) {
+    if (rfqFormData.productLine) {
       filteredProducts = filteredProducts.filter(p => 
-        p.product_line_id === rfqFormData.product_line_id
+        p.productLine === rfqFormData.productLine || p.product_line === rfqFormData.productLine
       );
     }
 
@@ -191,9 +210,9 @@ export default function Quotes() {
         !currentUser.access_all_product_lines && 
         currentUser.user_role !== 'system_admin' && 
         currentUser.user_role !== 'admin') {
-      const userProductLineIds = currentUser.product_line_ids || [];
+      const userProductLines = currentUser.product_lines || currentUser.productLines || [];
       filteredProducts = filteredProducts.filter(p => 
-        p.product_line_id && userProductLineIds.includes(p.product_line_id)
+        (p.productLine || p.product_line) && userProductLines.includes(p.productLine || p.product_line)
       );
     }
 
@@ -202,18 +221,18 @@ export default function Quotes() {
 
   // Filter product lines user has access to
   const getAccessibleProductLines = () => {
-    if (!currentUser) return [];
+    if (!currentUser) return PRODUCT_LINES;
     
     // System admins and users with access_all_product_lines see all
     if (currentUser.user_role === 'system_admin' || 
         currentUser.user_role === 'admin' || 
         currentUser.access_all_product_lines) {
-      return productLines;
+      return PRODUCT_LINES;
     }
 
-    // Filter by user's assigned product lines
-    const userProductLineIds = currentUser.product_line_ids || [];
-    return productLines.filter(pl => userProductLineIds.includes(pl.id));
+    // Filter by user's assigned product lines (now strings, not UUIDs)
+    const userProductLines = currentUser.product_lines || currentUser.productLines || [];
+    return PRODUCT_LINES.filter(pl => userProductLines.includes(pl));
   };
 
   // Check if discount requires approval
@@ -455,6 +474,7 @@ export default function Quotes() {
       contact_id: "",
       lead_id: "",
       vendors: "",
+      productLine: "", // Changed from product_line_id to productLine
       line_items: [],
       currency: currentUser?.default_currency || "USD",
       status: "SUBMITTED",
@@ -668,7 +688,7 @@ export default function Quotes() {
           {currentUser && !currentUser.access_all_product_lines && (
             <p className="text-sm text-indigo-600 mt-1 flex items-center gap-1">
               <Filter className="w-4 h-4" />
-              Filtered by your product lines ({currentUser.product_line_ids?.length || 0})
+              Filtered by your product lines ({currentUser.product_lines?.length || currentUser.productLines?.length || 0})
             </p>
           )}
         </div>
@@ -799,13 +819,21 @@ export default function Quotes() {
                           <div>
                             <p className="text-xs text-gray-500">Valid Until</p>
                             <p className="text-sm font-medium">
-                              {rfq.valid_until ? format(new Date(rfq.valid_until), 'MMM d, yyyy') : '-'}
+                              {rfq.valid_until ? (() => {
+                                const date = new Date(rfq.valid_until);
+                                return isNaN(date.getTime()) ? '-' : format(date, 'MMM d, yyyy');
+                              })() : '-'}
                             </p>
                           </div>
                           <div>
                             <p className="text-xs text-gray-500">Created</p>
                             <p className="text-sm font-medium">
-                              {format(new Date(rfq.created_date), 'MMM d, yyyy')}
+                              {(() => {
+                                const dateValue = rfq.created_date || rfq.createdAt || rfq.createdDate;
+                                if (!dateValue) return '-';
+                                const date = new Date(dateValue);
+                                return isNaN(date.getTime()) ? '-' : format(date, 'MMM d, yyyy');
+                              })()}
                             </p>
                           </div>
                         </div>
@@ -917,13 +945,21 @@ export default function Quotes() {
                         <div>
                           <p className="text-xs text-gray-500">Valid Until</p>
                           <p className="text-sm font-medium">
-                            {quote.valid_until ? format(new Date(quote.valid_until), 'MMM d, yyyy') : '-'}
+                            {quote.valid_until ? (() => {
+                              const date = new Date(quote.valid_until);
+                              return isNaN(date.getTime()) ? '-' : format(date, 'MMM d, yyyy');
+                            })() : '-'}
                           </p>
                         </div>
                         <div>
                           <p className="text-xs text-gray-500">Created</p>
                           <p className="text-sm font-medium">
-                            {format(new Date(quote.created_date), 'MMM d, yyyy')}
+                            {(() => {
+                              const dateValue = quote.created_date || quote.createdAt || quote.createdDate;
+                              if (!dateValue) return '-';
+                              const date = new Date(dateValue);
+                              return isNaN(date.getTime()) ? '-' : format(date, 'MMM d, yyyy');
+                            })()}
                           </p>
                         </div>
                       </div>
@@ -983,7 +1019,10 @@ export default function Quotes() {
                       </div>
                       {activeTemplate.usage_count > 0 && (
                         <p className="text-xs text-emerald-600 mt-2">
-                          Used {activeTemplate.usage_count} times • Last used {activeTemplate.last_used ? format(new Date(activeTemplate.last_used), 'MMM d, yyyy') : 'Never'}
+                          Used {activeTemplate.usage_count} times • Last used {activeTemplate.last_used ? (() => {
+                            const date = new Date(activeTemplate.last_used);
+                            return isNaN(date.getTime()) ? 'Never' : format(date, 'MMM d, yyyy');
+                          })() : 'Never'}
                         </p>
                       )}
                     </div>
@@ -1185,8 +1224,18 @@ export default function Quotes() {
                         </SelectItem>
                       ) : (
                         filteredProducts.map((product) => {
-                          const productName = product.product_name || product.name || product.product_code || product.code || 'Unnamed Product';
-                          const manufacturerName = product.manufacturer?.company_name || product.manufacturer?.name || '';
+                          const productName = product.product_name || product.productName || product.product_code || product.productCode || 'Unnamed Product';
+                          // Handle manufacturer name - check both snake_case and camelCase, and ensure it's a string
+                          let manufacturerName = '';
+                          if (product.manufacturer) {
+                            manufacturerName = product.manufacturer.company_name || 
+                                             product.manufacturer.companyName || 
+                                             product.manufacturer.name || '';
+                            // Ensure it's a string, not an object
+                            if (typeof manufacturerName !== 'string') {
+                              manufacturerName = '';
+                            }
+                          }
                           const displayText = manufacturerName 
                             ? `${productName} (${manufacturerName})`
                             : productName;

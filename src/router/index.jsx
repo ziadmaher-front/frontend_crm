@@ -1,6 +1,6 @@
 // Modern Routing System with Protected Routes and Enhanced Navigation
 import React, { Suspense, lazy } from 'react';
-import { createBrowserRouter, RouterProvider, Navigate, Outlet } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/stores';
 import Layout from '@/pages/Layout';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
@@ -15,25 +15,69 @@ const Accounts = lazy(() => import('@/pages/Accounts'));
 const Deals = lazy(() => import('@/pages/Deals'));
 const Activities = lazy(() => import('@/pages/Activities'));
 const Tasks = lazy(() => import('@/pages/Tasks'));
-const Products = lazy(() => import('@/pages/Products'));
 const Quotes = lazy(() => import('@/pages/Quotes'));
 const Campaigns = lazy(() => import('@/pages/Campaigns'));
 const EmailTemplates = lazy(() => import('@/pages/EmailTemplates'));
 const Reports = lazy(() => import('@/pages/Reports'));
-const ProductLines = lazy(() => import('@/pages/ProductLines'));
 const PurchaseOrders = lazy(() => import('@/pages/PurchaseOrders'));
-const Manufacturers = lazy(() => import('@/pages/Manufacturers'));
 const Profile = lazy(() => import('@/pages/Profile'));
 const Settings = lazy(() => import('@/pages/Settings'));
 const Approvals = lazy(() => import('@/pages/Approvals'));
 const Documents = lazy(() => import('@/pages/Documents'));
 const Forecasting = lazy(() => import('@/pages/Forecasting'));
+const Security = lazy(() => import('@/pages/Security'));
+const UserExperience = lazy(() => import('@/pages/UserExperience'));
+const CreateUser = lazy(() => import('@/pages/admin/CreateUser'));
 
 // AI & Intelligence
 const AIDashboard = lazy(() => import('@/components/dashboard/AIDashboard'));
 const AIPerformanceDashboard = lazy(() => import('@/pages/AIPerformanceDashboard'));
 const EnhancedAIDashboard = lazy(() => import('@/pages/EnhancedAIDashboard'));
 const AISystemMonitor = lazy(() => import('@/components/AISystemMonitor'));
+
+// AI Feature Pages with error handling
+const AILeadQualification = lazy(() => {
+  console.log('Loading AILeadQualification...');
+  return import('@/pages/AILeadQualification').catch(err => {
+    console.error('Failed to load AILeadQualification:', err);
+    return { default: () => <div className="p-8 text-center">Error loading AI Lead Qualification. Please refresh the page.</div> };
+  });
+});
+const IntelligentDealInsights = lazy(() => {
+  console.log('Loading IntelligentDealInsights...');
+  return import('@/pages/IntelligentDealInsights').catch(err => {
+    console.error('Failed to load IntelligentDealInsights:', err);
+    return { default: () => <div className="p-8 text-center">Error loading Intelligent Deal Insights. Please refresh the page.</div> };
+  });
+});
+const ConversationalAI = lazy(() => {
+  console.log('Loading ConversationalAI...');
+  return import('@/pages/ConversationalAI').catch(err => {
+    console.error('Failed to load ConversationalAI:', err);
+    return { default: () => <div className="p-8 text-center">Error loading Conversational AI. Please refresh the page.</div> };
+  });
+});
+const RealTimeBI = lazy(() => {
+  console.log('Loading RealTimeBI...');
+  return import('@/pages/RealTimeBI').catch(err => {
+    console.error('Failed to load RealTimeBI:', err);
+    return { default: () => <div className="p-8 text-center">Error loading Real-Time BI. Please refresh the page.</div> };
+  });
+});
+const WorkflowAutomation = lazy(() => {
+  console.log('Loading WorkflowAutomation...');
+  return import('@/pages/WorkflowAutomation').catch(err => {
+    console.error('Failed to load WorkflowAutomation:', err);
+    return { default: () => <div className="p-8 text-center">Error loading Workflow Automation. Please refresh the page.</div> };
+  });
+});
+const PredictiveAnalytics = lazy(() => {
+  console.log('Loading PredictiveAnalytics...');
+  return import('@/components/PredictiveAnalytics').catch(err => {
+    console.error('Failed to load PredictiveAnalytics:', err);
+    return { default: () => <div className="p-8 text-center">Error loading Predictive Analytics. Please refresh the page.</div> };
+  });
+});
 
 // Detail pages
 const LeadDetails = lazy(() => import('@/pages/LeadDetails'));
@@ -45,6 +89,7 @@ const AccountDetails = lazy(() => import('@/pages/AccountDetails'));
 // Auth pages
 const Login = lazy(() => import('@/pages/auth/Login'));
 const Register = lazy(() => import('@/pages/auth/Register'));
+const OAuthCallback = lazy(() => import('@/pages/auth/OAuthCallback'));
 const ForgotPassword = lazy(() => import('@/pages/auth/ForgotPassword'));
 
 // Error pages
@@ -55,6 +100,20 @@ const Unauthorized = lazy(() => import('@/pages/errors/Unauthorized'));
 const PageLoader = () => (
   <div className="flex items-center justify-center h-64">
     <LoadingSpinner size="lg" />
+  </div>
+);
+
+// Error component for failed lazy loads
+const LazyLoadError = ({ componentName }) => (
+  <div className="flex flex-col items-center justify-center h-64 p-8">
+    <div className="text-red-600 text-xl font-semibold mb-2">Failed to load {componentName}</div>
+    <p className="text-gray-600 mb-4">Please refresh the page or contact support if the problem persists.</p>
+    <button 
+      onClick={() => window.location.reload()}
+      className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+    >
+      Refresh Page
+    </button>
   </div>
 );
 
@@ -95,14 +154,96 @@ const AuthenticatedLayout = () => (
   </ProtectedRoute>
 );
 
-// Public layout for auth pages (redirect if already authenticated)
+// Public layout for auth pages (redirect if already authenticated, except for admin on register page)
 const PublicLayout = () => {
-  const { isAuthenticated, user, token } = useAuthStore();
+  const { isAuthenticated, user, token, hasPermission } = useAuthStore();
   const storedToken = localStorage.getItem('authToken');
+  const location = useLocation();
+  
+  // Check if user is admin - check multiple ways
+  const isAdmin = React.useMemo(() => {
+    if (!user) {
+      console.log('PublicLayout: No user object');
+      return false;
+    }
+    
+    console.log('PublicLayout: Checking admin status for user:', {
+      userKeys: Object.keys(user),
+      userProfile: user.profile,
+      userRole: user.role,
+      userPermissions: user.permissions,
+    });
+    
+    try {
+      // Check permissions - try multiple permission names
+      if (hasPermission) {
+        const hasManageUsers = hasPermission('manage_users');
+        const hasManageSettings = hasPermission('manage_settings');
+        const hasAdminPermission = hasPermission('admin') || hasPermission('administrator');
+        
+        console.log('PublicLayout: Permission checks:', {
+          hasManageUsers,
+          hasManageSettings,
+          hasAdminPermission,
+        });
+        
+        if (hasManageUsers || hasManageSettings || hasAdminPermission) {
+          console.log('PublicLayout: User is admin (has permission)');
+          return true;
+        }
+      }
+    } catch (e) {
+      console.warn('PublicLayout: Error checking permissions:', e);
+    }
+    
+    // Check profile name (various possible field names)
+    const profileName = user.profile?.name || user.profileId?.name || user.profile_name || user.profileName || user.profile?.profileName;
+    if (profileName && (profileName.toLowerCase() === 'administrator' || profileName.toLowerCase().includes('admin'))) {
+      console.log('PublicLayout: User is admin (Administrator profile):', profileName);
+      return true;
+    }
+    
+    // Check role name (various possible field names)
+    const roleName = user.role?.name || user.roleId?.name || user.role_name || user.roleName || user.role?.roleName || user.role;
+    if (roleName && (roleName.toLowerCase() === 'administrator' || roleName.toLowerCase().includes('admin'))) {
+      console.log('PublicLayout: User is admin (Administrator role):', roleName);
+      return true;
+    }
+    
+    // Check if user has profileId or roleId that might indicate admin
+    const profileId = user.profileId || user.profile?.id || user.profile_id;
+    const roleId = user.roleId || user.role?.id || user.role_id;
+    
+    console.log('PublicLayout: User is NOT admin', { 
+      user, 
+      profileName, 
+      roleName,
+      profileId,
+      roleId,
+      allUserKeys: Object.keys(user),
+    });
+    return false;
+  }, [user, hasPermission]);
   
   // Only redirect if truly authenticated (has user and token in state or localStorage)
+  // BUT allow admins to access /auth/register for user creation
   if (isAuthenticated && user && (token || storedToken)) {
-    return <Navigate to="/dashboard" replace />;
+    // Don't redirect if admin is accessing register page
+    if (location.pathname === '/auth/register' && isAdmin) {
+      console.log('Admin accessing register page - allowing access');
+      return (
+        <div className="min-h-screen bg-gray-50">
+          <Suspense fallback={<PageLoader />}>
+            <Outlet />
+          </Suspense>
+        </div>
+      );
+    }
+    // For non-admin authenticated users, redirect away from auth pages
+    if (location.pathname.startsWith('/auth/')) {
+      console.log('Authenticated user accessing auth page - redirecting to dashboard');
+      return <Navigate to="/dashboard" replace />;
+    }
   }
   
   return (
@@ -199,39 +340,13 @@ const router = createBrowserRouter([
         element: <Tasks />,
       },
       
-      // Product Management
-      {
-        path: 'products',
-        children: [
-          {
-            index: true,
-            element: <Products />,
-          },
-          {
-            path: 'lines',
-            element: <ProductLines />,
-          },
-        ],
-      },
-      {
-        path: 'product-lines',
-        element: <ProductLines />,
-      },
-      {
-        path: 'productlines',
-        element: <ProductLines />,
-      },
       {
         path: 'quotes',
         element: <Quotes />,
       },
       {
-        path: 'purchase-orders',
+        path: 'sales-orders',
         element: <PurchaseOrders />,
-      },
-      {
-        path: 'manufacturers',
-        element: <Manufacturers />,
       },
       
       // Marketing
@@ -260,6 +375,10 @@ const router = createBrowserRouter([
         element: <AIDashboard />,
       },
       {
+        path: 'aidashboard',
+        element: <Navigate to="/ai-dashboard" replace />,
+      },
+      {
         path: 'ai-performance',
         element: <AIPerformanceDashboard />,
       },
@@ -270,6 +389,82 @@ const router = createBrowserRouter([
       {
         path: 'ai-system-monitor',
         element: <AISystemMonitor />,
+      },
+      {
+        path: 'ai-lead-qualification',
+        element: (
+          <ErrorBoundary>
+            <AILeadQualification />
+          </ErrorBoundary>
+        ),
+      },
+      {
+        path: 'aileadqualification',
+        element: <Navigate to="/ai-lead-qualification" replace />,
+      },
+      {
+        path: 'AILeadQualification',
+        element: <Navigate to="/ai-lead-qualification" replace />,
+      },
+      {
+        path: 'intelligent-deal-insights',
+        element: (
+          <ErrorBoundary>
+            <IntelligentDealInsights />
+          </ErrorBoundary>
+        ),
+      },
+      {
+        path: 'IntelligentDealInsights',
+        element: <Navigate to="/intelligent-deal-insights" replace />,
+      },
+      {
+        path: 'conversational-ai',
+        element: (
+          <ErrorBoundary>
+            <ConversationalAI />
+          </ErrorBoundary>
+        ),
+      },
+      {
+        path: 'ConversationalAI',
+        element: <Navigate to="/conversational-ai" replace />,
+      },
+      {
+        path: 'real-time-bi',
+        element: (
+          <ErrorBoundary>
+            <RealTimeBI />
+          </ErrorBoundary>
+        ),
+      },
+      {
+        path: 'RealTimeBI',
+        element: <Navigate to="/real-time-bi" replace />,
+      },
+      {
+        path: 'workflow-automation',
+        element: (
+          <ErrorBoundary>
+            <WorkflowAutomation />
+          </ErrorBoundary>
+        ),
+      },
+      {
+        path: 'WorkflowAutomation',
+        element: <Navigate to="/workflow-automation" replace />,
+      },
+      {
+        path: 'predictive-analytics',
+        element: (
+          <ErrorBoundary>
+            <PredictiveAnalytics />
+          </ErrorBoundary>
+        ),
+      },
+      {
+        path: 'PredictiveAnalytics',
+        element: <Navigate to="/predictive-analytics" replace />,
       },
       
       // Document Management
@@ -293,14 +488,20 @@ const router = createBrowserRouter([
       },
       {
         path: 'settings',
-        element: <ProtectedRoute requiredPermission="manage_settings">
-          <Settings />
-        </ProtectedRoute>,
+        element: <Settings />,
+      },
+      {
+        path: 'security',
+        element: <Security />,
+      },
+      {
+        path: 'user-experience',
+        element: <UserExperience />,
       },
     ],
   },
   
-  // Authentication Routes
+  // Authentication Routes (Public)
   {
     path: '/auth',
     element: <PublicLayout />,
@@ -316,6 +517,10 @@ const router = createBrowserRouter([
       {
         path: 'forgot-password',
         element: <ForgotPassword />,
+      },
+      {
+        path: 'integrations/oauth/:provider/callback',
+        element: <OAuthCallback />,
       },
     ],
   },
@@ -401,37 +606,6 @@ export const navigationConfig = [
     ],
   },
   {
-    id: 'products',
-    label: 'Products',
-    icon: 'Package',
-    children: [
-      {
-        id: 'products',
-        label: 'Products',
-        path: '/products',
-        icon: 'Package',
-      },
-      {
-        id: 'quotes',
-        label: 'Quotes',
-        path: '/quotes',
-        icon: 'FileText',
-      },
-      {
-        id: 'purchase-orders',
-        label: 'Purchase Orders',
-        path: '/purchase-orders',
-        icon: 'ShoppingCart',
-      },
-      {
-        id: 'manufacturers',
-        label: 'Manufacturers',
-        path: '/manufacturers',
-        icon: 'Factory',
-      },
-    ],
-  },
-  {
     id: 'marketing',
     label: 'Marketing',
     icon: 'Megaphone',
@@ -497,6 +671,42 @@ export const navigationConfig = [
         label: 'System Monitor',
         path: '/ai-system-monitor',
         icon: 'Monitor',
+      },
+      {
+        id: 'ai-lead-qualification',
+        label: 'AI Lead Qualification',
+        path: '/ai-lead-qualification',
+        icon: 'Target',
+      },
+      {
+        id: 'intelligent-deal-insights',
+        label: 'Deal Insights',
+        path: '/intelligent-deal-insights',
+        icon: 'TrendingUp',
+      },
+      {
+        id: 'conversational-ai',
+        label: 'AI Assistant',
+        path: '/conversational-ai',
+        icon: 'MessageSquare',
+      },
+      {
+        id: 'real-time-bi',
+        label: 'Real-Time BI',
+        path: '/real-time-bi',
+        icon: 'BarChart3',
+      },
+      {
+        id: 'workflow-automation',
+        label: 'Workflow Builder',
+        path: '/workflow-automation',
+        icon: 'Bot',
+      },
+      {
+        id: 'predictive-analytics',
+        label: 'Predictive Analytics',
+        path: '/predictive-analytics',
+        icon: 'Brain',
       },
     ],
   },

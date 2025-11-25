@@ -6,6 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { 
   ArrowLeft, 
   Edit, 
@@ -13,17 +19,32 @@ import {
   Phone, 
   Globe,
   Users,
+  UserPlus,
   TrendingUp,
   FileText,
   MapPin,
   DollarSign,
-  Calendar, // Added Calendar import
-  MessageSquare // Added MessageSquare import
+  Calendar,
+  MessageSquare,
+  X,
+  Building2,
+  Briefcase,
+  Smartphone,
+  Eye
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { format } from "date-fns";
 import ActivityTimeline from "../components/ActivityTimeline";
+
+const CURRENCY_SYMBOLS = {
+  USD: "$",
+  EGP: "E£",
+  AED: "د.إ",
+  SAR: "﷼",
+  EUR: "€",
+  GBP: "£"
+};
 import QuickActions from "../components/QuickActions";
 import AIInsights from "../components/AIInsights";
 import CalendarScheduler from "../components/CalendarScheduler"; // Added CalendarScheduler import
@@ -33,14 +54,18 @@ import WhatsAppSender from "../components/WhatsAppSender"; // Added WhatsAppSend
 export default function AccountDetails() {
   const [showCalendarDialog, setShowCalendarDialog] = useState(false);
   const [showWhatsAppDialog, setShowWhatsAppDialog] = useState(false);
-  const urlParams = new URLSearchParams(window.location.search);
-  const accountId = urlParams.get('id');
+  const [selectedContact, setSelectedContact] = useState(null);
+  const [showContactDialog, setShowContactDialog] = useState(false);
+  const [selectedDeal, setSelectedDeal] = useState(null);
+  const [showDealDialog, setShowDealDialog] = useState(false);
+  const { id: accountId } = useParams();
+  const navigate = useNavigate();
 
-  const { data: account } = useQuery({
+  const { data: account, isLoading: accountLoading } = useQuery({
     queryKey: ['account', accountId],
     queryFn: async () => {
-      const accounts = await base44.entities.Account.list();
-      return accounts.find(a => a.id === accountId);
+      if (!accountId) return null;
+      return await base44.entities.Account.get(accountId);
     },
     enabled: !!accountId,
   });
@@ -49,7 +74,14 @@ export default function AccountDetails() {
     queryKey: ['contacts', accountId],
     queryFn: async () => {
       const all = await base44.entities.Contact.list();
-      return all.filter(c => c.account_id === accountId);
+      return all.filter(c => {
+        // Check accountId (UUID) or account relation
+        return c.accountId === accountId || 
+               c.account_id === accountId || 
+               c.account?.id === accountId ||
+               c.Account_details?.id === accountId ||
+               c.account_details?.id === accountId;
+      });
     },
     enabled: !!accountId,
   });
@@ -58,7 +90,26 @@ export default function AccountDetails() {
     queryKey: ['deals', accountId],
     queryFn: async () => {
       const all = await base44.entities.Deal.list();
-      return all.filter(d => d.account_id === accountId);
+      return all.filter(d => {
+        // Check accountId (UUID) or account relation
+        return d.accountId === accountId || 
+               d.account_id === accountId || 
+               d.account?.id === accountId;
+      });
+    },
+    enabled: !!accountId,
+  });
+
+  const { data: leads = [] } = useQuery({
+    queryKey: ['leads', accountId],
+    queryFn: async () => {
+      const all = await base44.entities.Lead.list();
+      return all.filter(l => {
+        // Check accountId (UUID) or account relation
+        return l.accountId === accountId || 
+               l.account_id === accountId || 
+               l.account?.id === accountId;
+      });
     },
     enabled: !!accountId,
   });
@@ -95,17 +146,36 @@ export default function AccountDetails() {
     queryFn: () => base44.entities.User.list(),
   });
 
+  if (accountLoading) {
+    return (
+      <div className="p-6 lg:p-8">
+        <div className="flex items-center gap-4 mb-6">
+          <Button variant="ghost" size="icon" onClick={() => navigate('/accounts')}>
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <h1 className="text-2xl font-bold">Loading...</h1>
+        </div>
+      </div>
+    );
+  }
+
   if (!account) {
     return (
       <div className="p-6 lg:p-8">
         <div className="flex items-center gap-4 mb-6">
-          <Link to={createPageUrl('Accounts')}>
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-          </Link>
-          <h1 className="text-2xl font-bold">Loading...</h1>
+          <Button variant="ghost" size="icon" onClick={() => navigate('/accounts')}>
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <h1 className="text-2xl font-bold">Account Not Found</h1>
         </div>
+        <Card>
+          <CardContent className="p-6">
+            <p className="text-gray-600">The account you're looking for doesn't exist or has been moved.</p>
+            <Button onClick={() => navigate('/accounts')} className="mt-4">
+              Go Back to Accounts
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -134,18 +204,16 @@ export default function AccountDetails() {
         <div className="p-6 lg:p-8">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Link to={createPageUrl('Accounts')}>
-                <Button variant="ghost" size="icon" className="hover:bg-gray-100">
-                  <ArrowLeft className="w-5 h-5" />
-                </Button>
-              </Link>
+              <Button variant="ghost" size="icon" className="hover:bg-gray-100" onClick={() => navigate('/accounts')}>
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-white font-bold text-2xl shadow-lg">
-                  {account.company_name?.[0]}
+                  {(account.name || account.company_name)?.[0]?.toUpperCase() || 'A'}
                 </div>
                 <div>
                   <h1 className="text-3xl font-bold text-gray-900">
-                    {account.company_name}
+                    {account.name || account.company_name || 'Unnamed Account'}
                   </h1>
                   {account.serial_number && (
                     <Badge variant="outline" className="mt-1 font-mono">
@@ -199,12 +267,13 @@ export default function AccountDetails() {
               data={{ 
                 accounts: [account], 
                 contacts: contacts,
+                leads: leads,
                 deals: deals,
                 activities: activities 
               }}
             />
 
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-5 gap-4">
               <Card className="border-none shadow-md">
                 <CardContent className="p-4">
                   <p className="text-sm text-gray-600">Total Revenue</p>
@@ -225,6 +294,12 @@ export default function AccountDetails() {
               </Card>
               <Card className="border-none shadow-md">
                 <CardContent className="p-4">
+                  <p className="text-sm text-gray-600">Leads</p>
+                  <p className="text-3xl font-bold text-blue-600">{leads.length}</p>
+                </CardContent>
+              </Card>
+              <Card className="border-none shadow-md">
+                <CardContent className="p-4">
                   <p className="text-sm text-gray-600">Activities</p>
                   <p className="text-3xl font-bold text-amber-600">{activities.length}</p>
                 </CardContent>
@@ -232,9 +307,10 @@ export default function AccountDetails() {
             </div>
 
             <Tabs defaultValue="timeline" className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="timeline">Timeline</TabsTrigger>
                 <TabsTrigger value="contacts">Contacts ({contacts.length})</TabsTrigger>
+                <TabsTrigger value="leads">Leads ({leads.length})</TabsTrigger>
                 <TabsTrigger value="deals">Deals ({deals.length})</TabsTrigger>
                 <TabsTrigger value="documents">Documents</TabsTrigger>
               </TabsList>
@@ -254,7 +330,10 @@ export default function AccountDetails() {
                     <Card 
                       key={contact.id} 
                       className="border-none shadow-md hover:shadow-lg transition-all cursor-pointer"
-                      onClick={() => window.location.href = createPageUrl('ContactDetails') + '?id=' + contact.id}
+                      onClick={() => {
+                        setSelectedContact(contact);
+                        setShowContactDialog(true);
+                      }}
                     >
                       <CardContent className="p-4">
                         <div className="flex items-center gap-4">
@@ -268,11 +347,11 @@ export default function AccountDetails() {
                           </div>
                           <div className="flex gap-2">
                             {contact.phone && (
-                              <Button variant="outline" size="sm">
+                              <Button variant="outline" size="sm" onClick={(e) => e.stopPropagation()}>
                                 <Phone className="w-4 h-4" />
                               </Button>
                             )}
-                            <Button variant="outline" size="sm">
+                            <Button variant="outline" size="sm" onClick={(e) => e.stopPropagation()}>
                               <Mail className="w-4 h-4" />
                             </Button>
                           </div>
@@ -289,13 +368,57 @@ export default function AccountDetails() {
                 </div>
               </TabsContent>
 
+              <TabsContent value="leads" className="mt-6">
+                <div className="space-y-3">
+                  {leads.map((lead) => (
+                    <Card 
+                      key={lead.id} 
+                      className="border-none shadow-md hover:shadow-lg transition-all cursor-pointer"
+                      onClick={() => navigate(`/leads/${lead.id}`)}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white font-semibold text-lg">
+                            {lead.first_name?.[0]}{lead.last_name?.[0]}
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-lg">{lead.first_name} {lead.last_name}</h4>
+                            <p className="text-sm text-gray-600">{lead.product_name || 'No product specified'}</p>
+                            <p className="text-xs text-gray-500 mt-1">{lead.email}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            {lead.phone && (
+                              <Button variant="outline" size="sm">
+                                <Phone className="w-4 h-4" />
+                              </Button>
+                            )}
+                            <Button variant="outline" size="sm">
+                              <Mail className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                  {leads.length === 0 && (
+                    <div className="text-center py-8 text-gray-500">
+                      <UserPlus className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                      <p>No leads found</p>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
               <TabsContent value="deals" className="mt-6">
                 <div className="space-y-3">
                   {deals.map((deal) => (
                     <Card 
                       key={deal.id} 
                       className="border-none shadow-md hover:shadow-lg transition-all cursor-pointer"
-                      onClick={() => window.location.href = createPageUrl('DealDetails') + '?id=' + deal.id}
+                      onClick={() => {
+                        setSelectedDeal(deal);
+                        setShowDealDialog(true);
+                      }}
                     >
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between">
@@ -498,6 +621,261 @@ export default function AccountDetails() {
           relatedTo={{ type: 'Account', id: accountId }}
         />
       )}
+
+      {/* Contact Details Dialog */}
+      <Dialog open={showContactDialog} onOpenChange={setShowContactDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <DialogTitle className="text-2xl">Contact Information</DialogTitle>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowContactDialog(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </DialogHeader>
+          {selectedContact && (
+            <div className="space-y-6">
+              {/* Header Section */}
+              <div className="flex items-start gap-4 pb-4 border-b">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold text-2xl">
+                  {selectedContact.first_name?.[0]}{selectedContact.last_name?.[0]}
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-2xl font-bold">
+                    {selectedContact.first_name} {selectedContact.last_name}
+                  </h3>
+                  {selectedContact.job_title && (
+                    <p className="text-lg text-gray-600 mt-1">{selectedContact.job_title}</p>
+                  )}
+                  {selectedContact.department && (
+                    <Badge variant="secondary" className="mt-2">
+                      {selectedContact.department}
+                    </Badge>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowContactDialog(false);
+                    window.location.href = createPageUrl('ContactDetails') + '?id=' + selectedContact.id;
+                  }}
+                >
+                  <Eye className="w-4 h-4 mr-2" />
+                  View Full Details
+                </Button>
+              </div>
+
+              {/* Contact Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-3">
+                  <h4 className="font-semibold text-lg mb-3">Contact Information</h4>
+                  
+                  {selectedContact.email && (
+                    <div className="flex items-center gap-3">
+                      <Mail className="w-5 h-5 text-gray-400" />
+                      <div>
+                        <p className="text-sm text-gray-500">Email</p>
+                        <a href={`mailto:${selectedContact.email}`} className="text-blue-600 hover:underline">
+                          {selectedContact.email}
+                        </a>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedContact.phone && (
+                    <div className="flex items-center gap-3">
+                      <Phone className="w-5 h-5 text-gray-400" />
+                      <div>
+                        <p className="text-sm text-gray-500">Phone</p>
+                        <a href={`tel:${selectedContact.phone}`} className="text-blue-600 hover:underline">
+                          {selectedContact.phone}
+                        </a>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedContact.mobile && (
+                    <div className="flex items-center gap-3">
+                      <Smartphone className="w-5 h-5 text-gray-400" />
+                      <div>
+                        <p className="text-sm text-gray-500">Mobile</p>
+                        <a href={`tel:${selectedContact.mobile}`} className="text-blue-600 hover:underline">
+                          {selectedContact.mobile}
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="font-semibold text-lg mb-3">Additional Information</h4>
+                  
+                  {selectedContact.company && (
+                    <div className="flex items-center gap-3">
+                      <Building2 className="w-5 h-5 text-gray-400" />
+                      <div>
+                        <p className="text-sm text-gray-500">Company</p>
+                        <p className="text-gray-900">{selectedContact.company}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedContact.account_id && (
+                    <div className="flex items-center gap-3">
+                      <Briefcase className="w-5 h-5 text-gray-400" />
+                      <div>
+                        <p className="text-sm text-gray-500">Account</p>
+                        <p className="text-gray-900">{account?.name || 'N/A'}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedContact.title && (
+                    <div className="flex items-center gap-3">
+                      <Users className="w-5 h-5 text-gray-400" />
+                      <div>
+                        <p className="text-sm text-gray-500">Title</p>
+                        <p className="text-gray-900">{selectedContact.title}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Notes/Bio Section */}
+              {(selectedContact.bio || selectedContact.notes) && (
+                <div className="pt-4 border-t">
+                  <h4 className="font-semibold text-lg mb-2">Notes</h4>
+                  <p className="text-gray-700">{selectedContact.bio || selectedContact.notes}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Deal Details Dialog */}
+      <Dialog open={showDealDialog} onOpenChange={setShowDealDialog}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <DialogTitle className="text-2xl">Deal Details</DialogTitle>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowDealDialog(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </DialogHeader>
+          {selectedDeal && (
+            <div className="space-y-6">
+              {/* Header Section */}
+              <div className="flex items-start gap-4 pb-4 border-b">
+                <div className="flex-1">
+                  <h3 className="text-2xl font-bold mb-2">
+                    {selectedDeal.name || selectedDeal.deal_name || 'Unnamed Deal'}
+                  </h3>
+                  <div className="flex gap-2 flex-wrap">
+                    <Badge variant="outline">{selectedDeal.stage || 'N/A'}</Badge>
+                    {selectedDeal.type && (
+                      <Badge variant="secondary">{selectedDeal.type}</Badge>
+                    )}
+                    {selectedDeal.probability && (
+                      <Badge variant="outline">{selectedDeal.probability}% probability</Badge>
+                    )}
+                  </div>
+                </div>
+                {selectedDeal.amount && (
+                  <div className="text-right">
+                    <p className="text-3xl font-bold text-emerald-600">
+                      {CURRENCY_SYMBOLS[selectedDeal.currency || 'USD']}{(selectedDeal.amount || 0).toLocaleString()}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Deal Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-3">
+                  <h4 className="font-semibold text-lg">Deal Information</h4>
+                  
+                  {selectedDeal.Account && (
+                    <div>
+                      <p className="text-sm text-gray-500">Account</p>
+                      <p className="text-gray-900">{selectedDeal.Account.name}</p>
+                    </div>
+                  )}
+
+                  {selectedDeal.Contact && (
+                    <div>
+                      <p className="text-sm text-gray-500">Contact</p>
+                      <p className="text-gray-900">
+                        {selectedDeal.Contact.name || `${selectedDeal.Contact.first_name || ''} ${selectedDeal.Contact.last_name || ''}`.trim()}
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedDeal.Lead && (
+                    <div>
+                      <p className="text-sm text-gray-500">Lead</p>
+                      <p className="text-gray-900">
+                        {selectedDeal.Lead.name || `${selectedDeal.Lead.first_name || ''} ${selectedDeal.Lead.last_name || ''}`.trim()}
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedDeal.leadSource && (
+                    <div>
+                      <p className="text-sm text-gray-500">Lead Source</p>
+                      <p className="text-gray-900">{selectedDeal.leadSource}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="font-semibold text-lg">Additional Details</h4>
+                  
+                  {selectedDeal.closingDate && (
+                    <div>
+                      <p className="text-sm text-gray-500">Expected Close Date</p>
+                      <p className="text-gray-900">
+                        {format(new Date(selectedDeal.closingDate), 'MMMM d, yyyy')}
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedDeal.description && (
+                    <div>
+                      <p className="text-sm text-gray-500">Description</p>
+                      <p className="text-gray-900 whitespace-pre-wrap">{selectedDeal.description}</p>
+                    </div>
+                  )}
+
+                  {selectedDeal.campaignSource && (
+                    <div>
+                      <p className="text-sm text-gray-500">Campaign Source</p>
+                      <p className="text-gray-900">{selectedDeal.campaignSource}</p>
+                    </div>
+                  )}
+
+                  {selectedDeal.quote && (
+                    <div>
+                      <p className="text-sm text-gray-500">Quote Number</p>
+                      <p className="text-gray-900">{selectedDeal.quote}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

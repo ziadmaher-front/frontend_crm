@@ -54,6 +54,7 @@ import AssignmentManager from "../components/AssignmentManager";
 import BulkOperations from "../components/BulkOperations";
 import { useNavigate } from "react-router-dom";
 import { PageSkeleton } from "@/components/ui/loading-states";
+import PhoneInput from "@/components/PhoneInput";
 
 export default function Contacts() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -73,12 +74,13 @@ export default function Contacts() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
+    title: "",
     first_name: "",
     last_name: "",
     email: "",
     phone: "",
     mobile_phone: "",
-    account_name: "",
+    accountId: "", // UUID linking to Account, not account_name string
     department: "",
     territory: "",
     assistant_name: "",
@@ -88,6 +90,7 @@ export default function Contacts() {
     mailing_state: "",
     mailing_zip: "",
     mailing_country: "",
+    ownerId: "", // UUID for owner
   });
 
   const queryClient = useQueryClient();
@@ -101,12 +104,26 @@ export default function Contacts() {
 
   // Load view preference
   useEffect(() => {
-    base44.auth.me().then(user => {
-      setCurrentUser(user);
-      if (user?.ui_preferences?.contacts_view) {
-        setView(user.ui_preferences.contacts_view);
-      }
-    });
+    base44.auth.me()
+      .then(user => {
+        if (!user) {
+          // Silently handle missing user data - no need to warn as it's expected
+          // This is normal if the /auth/me endpoint returns 404
+          return;
+        }
+        setCurrentUser(user);
+        if (user?.ui_preferences?.contacts_view) {
+          setView(user.ui_preferences.contacts_view);
+        }
+      })
+      .catch(error => {
+        // Silently handle errors - 404 is expected if endpoint doesn't exist
+        // Only log if it's not a 404 error
+        if (!error.message?.includes('404') && !error.message?.includes('not found')) {
+          console.warn('Failed to fetch user data:', error);
+        }
+        // Don't crash the app if auth/me fails
+      });
   }, []);
 
   // Save view preference
@@ -166,9 +183,23 @@ export default function Contacts() {
     queryFn: () => base44.entities.Account.list(),
   });
 
-  const { data: users = [], isLoading: usersLoading } = useQuery({
-    queryKey: ['users'],
-    queryFn: () => base44.entities.User.list(),
+  const { data: users = [], isLoading: usersLoading, error: usersError } = useQuery({
+    queryKey: ['accountCreationFormUsers'],
+    queryFn: async () => {
+      try {
+        const usersList = await base44.entities.User.getAccountCreationFormUsers();
+        console.log('Account creation form users fetched:', usersList.length, 'users');
+        if (usersList.length > 0) {
+          console.log('First user sample:', usersList[0]);
+        }
+        return usersList;
+      } catch (error) {
+        console.error('Error fetching account creation form users:', error);
+        return []; // Return empty array on error
+      }
+    },
+    retry: 1,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
   const { data: productLines = [], isLoading: productLinesLoading } = useQuery({
@@ -302,12 +333,13 @@ export default function Contacts() {
 
   const resetForm = () => {
     setFormData({
+      title: "",
       first_name: "",
       last_name: "",
       email: "",
       phone: "",
       mobile_phone: "",
-      account_name: "",
+      accountId: "",
       department: "",
       territory: "",
       assistant_name: "",
@@ -317,6 +349,7 @@ export default function Contacts() {
       mailing_state: "",
       mailing_zip: "",
       mailing_country: "",
+      ownerId: "",
     });
     setEditingContact(null);
   };
@@ -324,22 +357,30 @@ export default function Contacts() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    // Convert empty strings to undefined for accountId and ownerId
+    const submitData = {
+      ...formData,
+      accountId: formData.accountId || undefined,
+      ownerId: formData.ownerId || undefined,
+    };
+    
     if (editingContact) {
-      updateMutation.mutate({ id: editingContact.id, data: formData });
+      updateMutation.mutate({ id: editingContact.id, data: submitData });
     } else {
-      createMutation.mutate(formData);
+      createMutation.mutate(submitData);
     }
   };
 
   const handleEdit = (contact) => {
     setEditingContact(contact);
     setFormData({
+      title: contact.title || "",
       first_name: contact.first_name || "",
       last_name: contact.last_name || "",
       email: contact.email || "",
       phone: contact.phone || "",
       mobile_phone: contact.mobile_phone || contact.mobile || "",
-      account_name: contact.account_name || contact.account || "",
+      accountId: contact.accountId || contact.account_id || contact.account?.id || "",
       department: contact.department || "",
       territory: contact.territory || "",
       assistant_name: contact.assistant_name || contact.assistant || "",
@@ -349,6 +390,7 @@ export default function Contacts() {
       mailing_state: contact.mailing_state || contact.state || "",
       mailing_zip: contact.mailing_zip || contact.zip || contact.postal_code || "",
       mailing_country: contact.mailing_country || contact.country || "",
+      ownerId: contact.ownerId || contact.owner_id || contact.owner?.id || "",
     });
     setShowDialog(true);
   };
@@ -1004,6 +1046,24 @@ export default function Contacts() {
             <DialogTitle>{editingContact ? 'Edit Contact' : 'Add New Contact'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="title">Title</Label>
+              <Select
+                value={formData.title || ""}
+                onValueChange={(value) => setFormData({...formData, title: value})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select title (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Mr">Mr</SelectItem>
+                  <SelectItem value="Mrs">Mrs</SelectItem>
+                  <SelectItem value="Dr">Dr</SelectItem>
+                  <SelectItem value="Prof">Prof</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className={`grid grid-cols-2 gap-4 ${isMobile ? 'grid-cols-1' : ''}`}>
               <AccessibleFormField
                 label="First Name"
@@ -1039,47 +1099,139 @@ export default function Contacts() {
                   required
                 />
               </AccessibleFormField>
-              <AccessibleFormField
-                label="Phone"
-                required={true}
-              >
-                <Input
-                  value={formData.phone}
-                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                  required
-                />
-              </AccessibleFormField>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="mobile_phone">Mobile Phone</Label>
-              <Input
-                id="mobile_phone"
+              <PhoneInput
+                label="Mobile Phone"
                 value={formData.mobile_phone}
-                onChange={(e) => setFormData({...formData, mobile_phone: e.target.value})}
+                onChange={(value) => setFormData({...formData, mobile_phone: value})}
+                required={true}
                 placeholder="Enter mobile phone number"
+                id="mobile_phone"
+                name="mobile_phone"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="account_name">Account Name</Label>
-              <Input
-                id="account_name"
-                value={formData.account_name}
-                onChange={(e) => setFormData({...formData, account_name: e.target.value})}
-                placeholder="Enter account name"
+              <PhoneInput
+                label="Phone (Secondary)"
+                value={formData.phone}
+                onChange={(value) => setFormData({...formData, phone: value})}
+                required={false}
+                placeholder="Enter secondary phone number"
+                id="phone"
+                name="phone"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="accountId">Account (Optional)</Label>
+              <Select
+                value={formData.accountId || ""}
+                onValueChange={(value) => {
+                  if (value !== "__none__") {
+                    setFormData({...formData, accountId: value});
+                  } else {
+                    setFormData({...formData, accountId: ""});
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select account..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {accounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name || account.company_name || 'Unnamed Account'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ownerId">Owner (Optional)</Label>
+              <Select
+                value={formData.ownerId || ""}
+                onValueChange={(value) => {
+                  if (value !== "__none__") {
+                    setFormData({...formData, ownerId: value});
+                  } else {
+                    setFormData({...formData, ownerId: ""});
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={usersLoading ? "Loading users..." : "Select owner..."} />
+                </SelectTrigger>
+                <SelectContent>
+                  {usersLoading ? (
+                    <SelectItem value="__loading__" disabled>Loading users...</SelectItem>
+                  ) : usersError ? (
+                    <SelectItem value="__error__" disabled>Error loading users</SelectItem>
+                  ) : Array.isArray(users) && users.length > 0 ? (
+                    <>
+                      <SelectItem value="__none__">None</SelectItem>
+                      {users
+                        .filter(user => user?.id)
+                        .map((user) => (
+                          <SelectItem key={user.id} value={user.id}>
+                            {user.name || user.email || user.id || "Unknown User"}
+                            {user.email ? ` (${user.email})` : ''}
+                          </SelectItem>
+                        ))}
+                    </>
+                  ) : (
+                    <SelectItem value="__disabled__" disabled>No users available</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className={`grid grid-cols-2 gap-4 ${isMobile ? 'grid-cols-1' : ''}`}>
               <div className="space-y-2">
                 <Label htmlFor="department">Department</Label>
-                <Input
-                  id="department"
-                  value={formData.department}
-                  onChange={(e) => setFormData({...formData, department: e.target.value})}
-                  placeholder="Enter department"
-                />
+                <Select
+                  value={formData.department || ""}
+                  onValueChange={(value) => setFormData({...formData, department: value})}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select department (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CEO">CEO</SelectItem>
+                    <SelectItem value="CTO">CTO</SelectItem>
+                    <SelectItem value="CFO">CFO</SelectItem>
+                    <SelectItem value="CMO">CMO</SelectItem>
+                    <SelectItem value="CHRO">CHRO</SelectItem>
+                    <SelectItem value="CIO">CIO</SelectItem>
+                    <SelectItem value="CRO">CRO</SelectItem>
+                    <SelectItem value="CSO">CSO</SelectItem>
+                    <SelectItem value="CPO">CPO</SelectItem>
+                    <SelectItem value="CSO">CSO</SelectItem>
+                    <SelectItem value="CSO">CSO</SelectItem>
+                    <SelectItem value="Sales">Sales</SelectItem>
+                    <SelectItem value="Marketing">Marketing</SelectItem>
+                    <SelectItem value="Customer Service">Customer Service</SelectItem>
+                    <SelectItem value="Support">Support</SelectItem>
+                    <SelectItem value="IT">IT</SelectItem>
+                    <SelectItem value="HR">HR</SelectItem>
+                    <SelectItem value="Finance">Finance</SelectItem>
+                    <SelectItem value="Accounting">Accounting</SelectItem>
+                    <SelectItem value="Operations">Operations</SelectItem>
+                    <SelectItem value="Management">Management</SelectItem>
+                    <SelectItem value="Engineering">Engineering</SelectItem>
+                    <SelectItem value="Research & Development">Research & Development</SelectItem>
+                    <SelectItem value="Legal">Legal</SelectItem>
+                    <SelectItem value="Procurement">Procurement</SelectItem>
+                    <SelectItem value="Quality Assurance">Quality Assurance</SelectItem>
+                    <SelectItem value="Production">Production</SelectItem>
+                    <SelectItem value="Logistics">Logistics</SelectItem>
+                    <SelectItem value="Administration">Administration</SelectItem>
+                    <SelectItem value="Business Development">Business Development</SelectItem>
+                    <SelectItem value="Product Management">Product Management</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="territory">Territory</Label>

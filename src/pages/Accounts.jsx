@@ -1,5 +1,6 @@
 
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,6 +35,7 @@ import {
   Square,
   ChevronLeft,
   ChevronRight,
+  X,
 } from "lucide-react";
 import {
   Dialog,
@@ -64,9 +66,11 @@ import BulkOperations from "../components/BulkOperations";
 import { SwipeToDelete, TouchCard, PullToRefresh } from "@/components/TouchInteractions";
 import { createPageUrl } from "@/utils";
 import { useToast } from "@/components/ui/use-toast";
+import PhoneInput from "@/components/PhoneInput";
 
 export default function Accounts() {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [territoryFilter, setTerritoryFilter] = useState("all");
@@ -88,9 +92,9 @@ export default function Accounts() {
     accountNumber: "",
     billing_street: "",
     billing_city: "",
-    ownerId: "",
     // Optional fields
     website: "",
+    phone: "",
     billing_state: "",
     billing_zip: "",
     billing_country: "",
@@ -99,6 +103,7 @@ export default function Accounts() {
     shipping_state: "",
     shipping_zip: "",
     shipping_country: "",
+    userIds: [], // Array of user UUIDs
     parentAccountId: "",
   });
 
@@ -139,17 +144,17 @@ export default function Accounts() {
   });
 
   const { data: users = [], isLoading: usersLoading, error: usersError } = useQuery({
-    queryKey: ['users'],
+    queryKey: ['accountCreationFormUsers'],
     queryFn: async () => {
       try {
-        const usersList = await base44.entities.User.list();
-        console.log('Users fetched in Accounts page:', usersList.length, 'users');
+        const usersList = await base44.entities.User.getAccountCreationFormUsers();
+        console.log('Account creation form users fetched:', usersList.length, 'users');
         if (usersList.length > 0) {
           console.log('First user sample:', usersList[0]);
         }
         return usersList;
       } catch (error) {
-        console.error('Error fetching users in Accounts page:', error);
+        console.error('Error fetching account creation form users:', error);
         return []; // Return empty array on error
       }
     },
@@ -214,9 +219,9 @@ export default function Accounts() {
 
   const createMutation = useMutation({
     mutationFn: async (data) => {
-      // Remove serial_number and ownerId as they're not part of backend schema for creation
-      const { serial_number, ownerId, owner_id, owner, ...accountData } = data;
-      console.log('Creating account with data (ownerId removed):', accountData);
+      // Remove serial_number but keep ownerId for account creation
+      const { serial_number, ...accountData } = data;
+      console.log('Creating account with data:', accountData);
       return base44.entities.Account.create(accountData);
     },
     onSuccess: () => {
@@ -298,9 +303,9 @@ export default function Accounts() {
       accountNumber: "",
       billing_street: "",
       billing_city: "",
-      ownerId: "",
       // Optional fields
       website: "",
+      phone: "",
       billing_state: "",
       billing_zip: "",
       billing_country: "",
@@ -309,6 +314,7 @@ export default function Accounts() {
       shipping_state: "",
       shipping_zip: "",
       shipping_country: "",
+      userIds: [],
       parentAccountId: "",
     });
     setEditingAccount(null);
@@ -327,11 +333,12 @@ export default function Accounts() {
       return;
     }
 
-    // Prepare data for submission
-    // Backend automatically sets ownerId, createdById, and modifiedById on creation from JWT token
+    // Prepare data for submission matching backend API format
     const submitData = {
       name: formData.name,
-      accountNumber: formData.accountNumber || null, // Will be auto-generated if null
+      accountNumber: formData.accountNumber || undefined, // Will be auto-generated if not provided
+      phone: formData.phone || undefined,
+      website: formData.website || undefined,
       billing_street: formData.billing_street,
       billing_city: formData.billing_city,
       billing_state: formData.billing_state || undefined,
@@ -342,37 +349,31 @@ export default function Accounts() {
       shipping_state: formData.shipping_state || undefined,
       shipping_zip: formData.shipping_zip || undefined,
       shipping_country: formData.shipping_country || undefined,
-      parentAccountId: formData.parentAccountId === "__none__" || formData.parentAccountId === "" || !formData.parentAccountId ? null : formData.parentAccountId,
+      userIds: Array.isArray(formData.userIds) && formData.userIds.length > 0 ? formData.userIds : undefined,
+      parentAccountId: formData.parentAccountId === "__none__" || formData.parentAccountId === "" || !formData.parentAccountId ? undefined : formData.parentAccountId,
     };
 
-    // Only include ownerId when updating (backend sets it automatically on create)
-    if (editingAccount && formData.ownerId) {
-      submitData.ownerId = formData.ownerId;
-    }
-
     // Only include website if it's a valid URL
-    if (formData.website && formData.website.trim()) {
+    if (submitData.website && submitData.website.trim()) {
       // Ensure website starts with http:// or https://
-      let websiteUrl = formData.website.trim();
+      let websiteUrl = submitData.website.trim();
       if (!websiteUrl.startsWith('http://') && !websiteUrl.startsWith('https://')) {
         websiteUrl = 'https://' + websiteUrl;
       }
       submitData.website = websiteUrl;
     }
 
-    // Remove undefined fields
+    // Remove undefined and empty fields (but keep userIds array if it has items)
     Object.keys(submitData).forEach(key => {
-      if (submitData[key] === undefined || submitData[key] === "") {
+      if (key === 'userIds') {
+        // Keep userIds only if it's a non-empty array
+        if (!Array.isArray(submitData[key]) || submitData[key].length === 0) {
+          delete submitData[key];
+        }
+      } else if (submitData[key] === undefined || submitData[key] === "" || submitData[key] === null) {
         delete submitData[key];
       }
     });
-
-    // Explicitly remove ownerId from create requests (backend sets it automatically)
-    if (!editingAccount) {
-      delete submitData.ownerId;
-      delete submitData.owner_id;
-      delete submitData.owner;
-    }
 
     if (editingAccount) {
       updateMutation.mutate({ id: editingAccount.id, data: submitData });
@@ -383,15 +384,27 @@ export default function Accounts() {
 
   const handleEdit = (account) => {
     setEditingAccount(account);
+    
+    // Extract userIds from account - could be an array or single ownerId
+    let userIds = [];
+    if (Array.isArray(account.userIds)) {
+      userIds = account.userIds;
+    } else if (account.userIds) {
+      userIds = [account.userIds];
+    } else if (account.ownerId || account.owner_id || account.owner?.id) {
+      // Fallback: if there's an ownerId, include it in userIds
+      userIds = [account.ownerId || account.owner_id || account.owner.id];
+    }
+    
     setFormData({
       // Required fields
       name: account.name || account.company_name || "",
       accountNumber: account.accountNumber || account.account_number || "",
       billing_street: account.billing_street || account.billing_address || "",
       billing_city: account.billing_city || "",
-      ownerId: account.ownerId || account.owner_id || account.owner?.id || "",
       // Optional fields
       website: account.website || "",
+      phone: account.phone || "",
       billing_state: account.billing_state || account.billingState || "",
       billing_zip: account.billing_zip || account.billingZip || account.billing_zip_code || "",
       billing_country: account.billing_country || account.billingCountry || "",
@@ -400,6 +413,7 @@ export default function Accounts() {
       shipping_state: account.shipping_state || account.shippingState || "",
       shipping_zip: account.shipping_zip || account.shippingZip || account.shipping_zip_code || "",
       shipping_country: account.shipping_country || account.shippingCountry || "",
+      userIds: userIds,
       parentAccountId: account.parentAccountId || account.parent_account_id || account.parentAccount?.id || "",
     });
     setShowDialog(true);
@@ -428,7 +442,7 @@ export default function Accounts() {
   };
 
   const handleViewDetails = (account) => {
-    window.location.href = createPageUrl('AccountDetails') + '?id=' + account.id;
+    navigate(`/accounts/${account.id}`);
   };
 
   const getUserName = (email) => {
@@ -802,10 +816,22 @@ export default function Accounts() {
                   </td>
                   <td className="crm-table-cell text-gray-600">
                     {(() => {
+                      // Check for userIds array first (new format)
+                      const userIds = account.userIds || account.user_ids || [];
+                      if (Array.isArray(userIds) && userIds.length > 0) {
+                        const userNames = userIds
+                          .map(userId => {
+                            const user = users.find(u => u.id === userId);
+                            return user ? (user.name || user.full_name || user.email) : null;
+                          })
+                          .filter(Boolean);
+                        return userNames.length > 0 ? userNames.join(', ') : '-';
+                      }
+                      // Fallback to ownerId (old format)
                       const ownerId = account.ownerId || account.owner_id || account.owner?.id;
                       if (ownerId) {
                         const owner = users.find(u => u.id === ownerId);
-                        return owner ? (owner.name || owner.email) : '-';
+                        return owner ? (owner.name || owner.full_name || owner.email) : '-';
                       }
                       return account.assigned_users?.[0] ? getUserName(account.assigned_users[0]) : '-';
                     })()}
@@ -933,38 +959,88 @@ export default function Accounts() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="ownerId">
-                Account Owner {editingAccount ? '*' : '(Optional - defaults to you)'}
-              </Label>
-              <Select 
-                value={formData.ownerId || ""} 
-                onValueChange={(value) => {
-                  if (value && value !== "__disabled__" && value !== "__loading__" && value !== "__error__") {
-                    setFormData({...formData, ownerId: value});
-                  }
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={usersLoading ? "Loading users..." : editingAccount ? "Select owner..." : "Will default to you"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {usersLoading ? (
-                    <SelectItem value="__loading__" disabled>Loading users...</SelectItem>
-                  ) : usersError ? (
-                    <SelectItem value="__error__" disabled>Error loading users</SelectItem>
-                  ) : Array.isArray(users) && users.length > 0 ? (
-                    users
-                      .filter(user => user?.id) // Filter out users without IDs
-                      .map((user) => (
-                        <SelectItem key={user.id} value={user.id}>
-                          {user.name || user.email || user.id || "Unknown User"}
-                        </SelectItem>
-                      ))
-                  ) : (
-                    <SelectItem value="__disabled__" disabled>No users available</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
+              <PhoneInput
+                label="Phone"
+                value={formData.phone}
+                onChange={(value) => setFormData({...formData, phone: value})}
+                required={false}
+                placeholder="Enter phone number"
+                id="phone"
+                name="phone"
+                useEgyptianAreaCodes={true}
+              />
+            </div>
+
+            {/* Assigned Users - Multi-select */}
+            <div className="space-y-2">
+              <Label htmlFor="userIds">Assigned Users (Optional)</Label>
+              <div className="border rounded-lg p-3 max-h-48 overflow-y-auto space-y-2">
+                {usersLoading ? (
+                  <div className="text-sm text-gray-500">Loading users...</div>
+                ) : usersError ? (
+                  <div className="text-sm text-red-500">Error loading users</div>
+                ) : Array.isArray(users) && users.length > 0 ? (
+                  users
+                    .filter(user => user?.id)
+                    .map((user) => {
+                      const isSelected = formData.userIds.includes(user.id);
+                      return (
+                        <div key={user.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`user-${user.id}`}
+                            checked={isSelected}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setFormData({
+                                  ...formData,
+                                  userIds: [...formData.userIds, user.id]
+                                });
+                              } else {
+                                setFormData({
+                                  ...formData,
+                                  userIds: formData.userIds.filter(id => id !== user.id)
+                                });
+                              }
+                            }}
+                          />
+                          <Label
+                            htmlFor={`user-${user.id}`}
+                            className="text-sm font-normal cursor-pointer flex-1"
+                          >
+                            {user.name || user.full_name || user.email || user.id || "Unknown User"}
+                            {user.email && user.name !== user.email ? ` (${user.email})` : ''}
+                          </Label>
+                        </div>
+                      );
+                    })
+                ) : (
+                  <div className="text-sm text-gray-500">No users available</div>
+                )}
+              </div>
+              {formData.userIds.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {formData.userIds.map((userId) => {
+                    const user = users.find(u => u.id === userId);
+                    return (
+                      <Badge key={userId} variant="secondary" className="flex items-center gap-1">
+                        {user?.name || user?.full_name || user?.email || userId}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormData({
+                              ...formData,
+                              userIds: formData.userIds.filter(id => id !== userId)
+                            });
+                          }}
+                          className="ml-1 hover:bg-gray-300 rounded-full p-0.5"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Billing Address Section */}

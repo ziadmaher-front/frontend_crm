@@ -155,7 +155,7 @@ export const NotificationCenter = () => {
   // Use the real-time notifications hook (must be called unconditionally)
   const { notifications, dismissNotification, markAsRead, clearAll } = useRealTimeNotifications();
   const [isOpen, setIsOpen] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [soundEnabled, setSoundEnabled] = useState(false); // Disabled by default
   const audioContextRef = useRef(null);
 
   const unreadCount = notifications.filter(n => !n.read).length;

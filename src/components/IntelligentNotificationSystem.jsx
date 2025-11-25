@@ -106,14 +106,15 @@ export default function IntelligentNotificationSystem() {
     generateAIInsights();
     calculateStats();
     
-    // Simulate real-time notifications
-    const interval = setInterval(() => {
-      if (settings.enabled && Math.random() > 0.7) {
-        addNewNotification();
-      }
-    }, 10000);
+    // Disabled automatic notification generation
+    // Notifications will only appear when triggered by user actions or real events
+    // const interval = setInterval(() => {
+    //   if (settings.enabled && Math.random() > 0.7) {
+    //     addNewNotification();
+    //   }
+    // }, 10000);
 
-    return () => clearInterval(interval);
+    // return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {

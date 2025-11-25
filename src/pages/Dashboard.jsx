@@ -208,22 +208,30 @@ export default function Dashboard() {
     select: (data) => Array.isArray(data) ? data : []
   });
 
-  // Deals - return empty array if no backend endpoint (currently using mock data)
+  // Deals - fetch real data from backend
   const { data: deals = [], isLoading: dealsLoading, error: dealsError } = useQuery({
     queryKey: ['deals'],
     queryFn: async () => {
-      // Deal entity uses MockEntity, so return empty array to avoid mock data
-      return [];
+      try {
+        return await base44.entities.Deal.list();
+      } catch (error) {
+        console.error('Error fetching deals:', error);
+        return [];
+      }
     },
     select: (data) => Array.isArray(data) ? data : []
   });
 
-  // Tasks - return empty array if no backend endpoint (currently using mock data)
+  // Tasks - fetch real data from backend
   const { data: tasks = [], isLoading: tasksLoading, error: tasksError } = useQuery({
     queryKey: ['tasks'],
     queryFn: async () => {
-      // Task entity uses MockEntity, so return empty array to avoid mock data
-      return [];
+      try {
+        return await base44.entities.Task.list();
+      } catch (error) {
+        console.error('Error fetching tasks:', error);
+        return [];
+      }
     },
     select: (data) => Array.isArray(data) ? data : []
   });
@@ -265,10 +273,19 @@ export default function Dashboard() {
     const data = {};
     
     stages.forEach(stage => {
-      const stageDeals = combinedDeals.filter(d => d.stage === stage);
+      const stageDeals = combinedDeals.filter(d => {
+        const dealStage = d.stage || d.dealStage || '';
+        return dealStage.toLowerCase() === stage.toLowerCase() || 
+               dealStage === stage ||
+               (stage === 'Closed Won' && (dealStage === 'closed won' || dealStage === 'Closed Won')) ||
+               (stage === 'Closed Lost' && (dealStage === 'closed lost' || dealStage === 'Closed Lost'));
+      });
       data[stage] = {
         count: stageDeals.length,
-        value: stageDeals.reduce((sum, deal) => sum + (deal.amount || 0), 0)
+        value: stageDeals.reduce((sum, deal) => {
+          const amount = parseFloat(deal.amount) || parseFloat(deal.value) || 0;
+          return sum + amount;
+        }, 0)
       };
     });
     
@@ -289,12 +306,8 @@ export default function Dashboard() {
     let totalDealsValue = 0;
     if (Array.isArray(combinedDeals)) {
       totalDealsValue = combinedDeals.reduce((sum, deal) => {
-        const amount = deal?.amount;
-        if (amount !== null && amount !== undefined) {
-          const numAmount = Number(amount);
-          return sum + (isNaN(numAmount) ? 0 : numAmount);
-        }
-        return sum;
+        const amount = parseFloat(deal?.amount) || parseFloat(deal?.value) || 0;
+        return sum + (isNaN(amount) ? 0 : amount);
       }, 0);
     }
     
@@ -303,24 +316,30 @@ export default function Dashboard() {
       totalDealsValue = Number(revenueMetrics.totalRevenue);
     }
     
-    // Filter deals safely
+    // Filter deals safely - handle different stage formats
     const openDeals = Array.isArray(combinedDeals) 
-      ? combinedDeals.filter(d => d?.stage && !['Closed Won', 'Closed Lost'].includes(d.stage))
+      ? combinedDeals.filter(d => {
+          const stage = d?.stage || d?.dealStage || '';
+          return stage && 
+                 stage.toLowerCase() !== 'closed won' && 
+                 stage.toLowerCase() !== 'closed lost' &&
+                 stage !== 'Closed Won' &&
+                 stage !== 'Closed Lost';
+        })
       : [];
     const wonDeals = Array.isArray(combinedDeals)
-      ? combinedDeals.filter(d => d?.stage === 'Closed Won')
+      ? combinedDeals.filter(d => {
+          const stage = d?.stage || d?.dealStage || '';
+          return stage.toLowerCase() === 'closed won' || stage === 'Closed Won';
+        })
       : [];
     
     // Calculate won deals value
     let wonDealsValue = 0;
     if (Array.isArray(wonDeals)) {
       wonDealsValue = wonDeals.reduce((sum, deal) => {
-        const amount = deal?.amount;
-        if (amount !== null && amount !== undefined) {
-          const numAmount = Number(amount);
-          return sum + (isNaN(numAmount) ? 0 : numAmount);
-        }
-        return sum;
+        const amount = parseFloat(deal?.amount) || parseFloat(deal?.value) || 0;
+        return sum + (isNaN(amount) ? 0 : amount);
       }, 0);
     }
     
@@ -349,12 +368,22 @@ export default function Dashboard() {
     const qualifiedLeads = totalLeads;
     const aiConversionRate = conversionRate;
     
-    const winRate = Array.isArray(combinedDeals) && combinedDeals.length > 0
-      ? ((wonDeals.length / combinedDeals.length) * 100)
+    const closedDeals = Array.isArray(combinedDeals)
+      ? combinedDeals.filter(d => {
+          const stage = d?.stage || d?.dealStage || '';
+          return stage.toLowerCase() === 'closed won' || 
+                 stage.toLowerCase() === 'closed lost' ||
+                 stage === 'Closed Won' ||
+                 stage === 'Closed Lost';
+        })
+      : [];
+    
+    const winRate = closedDeals.length > 0
+      ? ((wonDeals.length / closedDeals.length) * 100)
       : 0;
     
-    const averageDealSize = Array.isArray(combinedDeals) && combinedDeals.length > 0
-      ? (totalDealsValue / combinedDeals.length)
+    const averageDealSize = wonDeals.length > 0
+      ? (wonDealsValue / wonDeals.length)
       : 0;
 
     return {
@@ -385,12 +414,30 @@ export default function Dashboard() {
   // Chart data from real backend data only
   const chartData = useMemo(() => {
     // Lead status distribution from real data
-    const leadStatusData = [
-      { name: 'New', value: combinedLeads.filter(l => l?.status === 'New').length, color: '#6366F1' },
-      { name: 'Contacted', value: combinedLeads.filter(l => l?.status === 'Contacted').length, color: '#8B5CF6' },
-      { name: 'Qualified', value: combinedLeads.filter(l => l?.status === 'Qualified').length, color: '#10B981' },
-      { name: 'Converted', value: combinedLeads.filter(l => l?.status === 'Converted').length, color: '#F59E0B' },
-    ].filter(item => item.value > 0); // Only show statuses with data
+    const statusCounts = {};
+    
+    combinedLeads.forEach(lead => {
+      const status = lead.status || lead.leadStatus || 'Unknown';
+      statusCounts[status] = (statusCounts[status] || 0) + 1;
+    });
+    
+    const statusColors = {
+      'New': '#6366F1',
+      'Contacted': '#8B5CF6',
+      'Qualified': '#10B981',
+      'Converted': '#F59E0B',
+      'Unqualified': '#EF4444',
+      'Unknown': '#6B7280'
+    };
+    
+    const leadStatusData = Object.entries(statusCounts)
+      .map(([name, value]) => ({
+        name,
+        value,
+        color: statusColors[name] || '#6B7280'
+      }))
+      .filter(item => item.value > 0)
+      .sort((a, b) => b.value - a.value);
 
     return { leadStatusData };
   }, [combinedLeads]);
@@ -398,10 +445,10 @@ export default function Dashboard() {
   // Performance marks for dashboard mount and data loading - MUST be before any early returns
   useEffect(() => {
     try {
-      performanceMonitor.mark('dashboard-mount');
+      performanceMonitor.mark('dashboard-mount-start');
       // Measure after first paint
       requestAnimationFrame(() => {
-        performanceMonitor.measure('dashboard-mount');
+        performanceMonitor.measure('dashboard-mount', 'dashboard-mount-start');
       });
     } catch (err) {
       // Safe fallback if performance monitor is unavailable
@@ -412,12 +459,13 @@ export default function Dashboard() {
   useEffect(() => {
     try {
       if (isLoading) {
-        performanceMonitor.mark('dashboard-data-loading');
+        performanceMonitor.mark('dashboard-data-loading-start');
       } else {
-        performanceMonitor.measure('dashboard-data-loading');
+        // Measure from the start mark to now
+        performanceMonitor.measure('dashboard-data-loading', 'dashboard-data-loading-start');
       }
     } catch (err) {
-      console.warn('Performance monitor data loading mark failed:', err);
+      // Silently handle errors - performance monitoring is optional
     }
   }, [isLoading]);
 
@@ -430,8 +478,8 @@ export default function Dashboard() {
         queryClient.invalidateQueries({ queryKey: ['contacts'] }),
         queryClient.invalidateQueries({ queryKey: ['accounts'] }),
         queryClient.invalidateQueries({ queryKey: ['deals'] }),
+        queryClient.invalidateQueries({ queryKey: ['tasks'] }),
         queryClient.invalidateQueries({ queryKey: ['activities'] }),
-        refreshTasks()
       ]);
     } catch (error) {
       // Pass options object to useErrorHandler for correct behavior
@@ -450,16 +498,47 @@ export default function Dashboard() {
     }));
   }, [pipelineData]);
 
-  // Monthly revenue trend
+  // Monthly revenue trend - calculate from actual deals
   const revenueData = useMemo(() => {
-    const baseRevenue = Number(enhancedMetrics.wonDealsValue) || 0;
-    return [
-      { month: 'Jan', revenue: baseRevenue * 0.6 },
-      { month: 'Feb', revenue: baseRevenue * 0.7 },
-      { month: 'Mar', revenue: baseRevenue * 0.85 },
-      { month: 'Apr', revenue: baseRevenue },
-    ];
-  }, [enhancedMetrics.wonDealsValue]);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const now = new Date();
+    const revenueByMonth = {};
+    
+    // Initialize all months to 0
+    months.forEach(month => {
+      revenueByMonth[month] = 0;
+    });
+    
+    // Calculate revenue from won deals by month
+    const wonDeals = combinedDeals.filter(d => {
+      const stage = d.stage || d.dealStage || '';
+      return stage.toLowerCase() === 'closed won' || stage === 'Closed Won';
+    });
+    
+    wonDeals.forEach(deal => {
+      const closeDate = deal.closingDate || deal.actual_close_date || deal.expected_close_date || deal.createdAt || deal.created_date;
+      if (closeDate) {
+        try {
+          const date = new Date(closeDate);
+          const monthIndex = date.getMonth();
+          const monthName = months[monthIndex];
+          const amount = parseFloat(deal.amount) || parseFloat(deal.value) || 0;
+          if (monthName && !isNaN(amount)) {
+            revenueByMonth[monthName] = (revenueByMonth[monthName] || 0) + amount;
+          }
+        } catch (e) {
+          // Skip invalid dates
+        }
+      }
+    });
+    
+    // Get last 6 months
+    const last6Months = months.slice(-6);
+    return last6Months.map(month => ({
+      month,
+      revenue: Math.round(revenueByMonth[month] || 0)
+    }));
+  }, [combinedDeals]);
 
   // Show loading state - AFTER all hooks
   if (isLoading) {
@@ -701,7 +780,7 @@ export default function Dashboard() {
               variant="gradient"
               size="lg"
               className="h-auto p-4 flex-col items-start text-left bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
-              onClick={() => window.location.href = '/AILeadQualification'}
+              onClick={() => window.location.href = '/ai-lead-qualification'}
             >
               <Brain className="w-6 h-6 mb-2" />
               <span className="font-semibold">AI Lead Qualification</span>
@@ -714,7 +793,7 @@ export default function Dashboard() {
               variant="gradient"
               size="lg"
               className="h-auto p-4 flex-col items-start text-left bg-gradient-to-br from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700"
-              onClick={() => window.location.href = '/IntelligentDealInsights'}
+              onClick={() => window.location.href = '/intelligent-deal-insights'}
             >
               <Target className="w-6 h-6 mb-2" />
               <span className="font-semibold">Deal Intelligence</span>
@@ -727,7 +806,7 @@ export default function Dashboard() {
               variant="gradient"
               size="lg"
               className="h-auto p-4 flex-col items-start text-left bg-gradient-to-br from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700"
-              onClick={() => window.location.href = '/ConversationalAI'}
+              onClick={() => window.location.href = '/conversational-ai'}
             >
               <MessageSquare className="w-6 h-6 mb-2" />
               <span className="font-semibold">Conversational AI</span>
@@ -740,7 +819,7 @@ export default function Dashboard() {
               variant="gradient"
               size="lg"
               className="h-auto p-4 flex-col items-start text-left bg-gradient-to-br from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700"
-              onClick={() => window.location.href = '/RealTimeBI'}
+              onClick={() => window.location.href = '/real-time-bi'}
             >
               <BarChart3 className="w-6 h-6 mb-2" />
               <span className="font-semibold">Real-Time BI</span>
@@ -753,7 +832,7 @@ export default function Dashboard() {
               variant="gradient"
               size="lg"
               className="h-auto p-4 flex-col items-start text-left bg-gradient-to-br from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700"
-              onClick={() => window.location.href = '/WorkflowAutomation'}
+              onClick={() => window.location.href = '/workflow-automation'}
             >
               <Workflow className="w-6 h-6 mb-2" />
               <span className="font-semibold">Smart Automation</span>
@@ -766,7 +845,7 @@ export default function Dashboard() {
               variant="gradient"
               size="lg"
               className="h-auto p-4 flex-col items-start text-left bg-gradient-to-br from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700"
-              onClick={() => window.location.href = '/PredictiveAnalytics'}
+              onClick={() => window.location.href = '/predictive-analytics'}
             >
               <TrendingUp className="w-6 h-6 mb-2" />
               <span className="font-semibold">Predictive Analytics</span>

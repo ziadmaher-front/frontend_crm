@@ -42,28 +42,63 @@ export default function Forecasting() {
   }, []);
 
   const { data: deals = [] } = useQuery({
-    queryKey: ['deals'],
-    queryFn: () => base44.entities.Deal.list(),
+    queryKey: ['forecasting-deals'],
+    queryFn: async () => {
+      try {
+        return await base44.entities.Deal.list();
+      } catch (error) {
+        console.error('Error fetching deals for forecasting:', error);
+        return [];
+      }
+    },
   });
 
   const { data: targets = [] } = useQuery({
     queryKey: ['salesTargets'],
-    queryFn: () => base44.entities.SalesTarget.list(),
+    queryFn: async () => {
+      try {
+        return await base44.entities.SalesTarget?.list() || [];
+      } catch (error) {
+        console.error('Error fetching sales targets:', error);
+        return [];
+      }
+    },
   });
 
   const { data: teams = [] } = useQuery({
     queryKey: ['teams'],
-    queryFn: () => base44.entities.Team.list(),
+    queryFn: async () => {
+      try {
+        return await base44.entities.Team?.list() || [];
+      } catch (error) {
+        console.error('Error fetching teams:', error);
+        return [];
+      }
+    },
   });
 
   const { data: users = [] } = useQuery({
     queryKey: ['users'],
-    queryFn: () => base44.entities.User.list(),
+    queryFn: async () => {
+      try {
+        return await base44.entities.User?.list() || [];
+      } catch (error) {
+        console.error('Error fetching users:', error);
+        return [];
+      }
+    },
   });
 
   const { data: forecasts = [] } = useQuery({
     queryKey: ['forecasts'],
-    queryFn: () => base44.entities.Forecast.list('-created_date'),
+    queryFn: async () => {
+      try {
+        return await base44.entities.Forecast?.list('-created_date') || [];
+      } catch (error) {
+        console.error('Error fetching forecasts:', error);
+        return [];
+      }
+    },
   });
 
   const getCurrentPeriodDates = () => {
@@ -92,19 +127,47 @@ export default function Forecasting() {
   const { start: periodStart, end: periodEnd } = getCurrentPeriodDates();
 
   const currentPeriodDeals = deals.filter(deal => {
-    const closeDate = deal.expected_close_date || deal.actual_close_date;
+    const closeDate = deal.expected_close_date || deal.expectedCloseDate || deal.actual_close_date || deal.closingDate || deal.createdAt || deal.created_date;
     if (!closeDate) return false;
-    const dealDate = new Date(closeDate);
-    return dealDate >= periodStart && dealDate <= periodEnd;
+    try {
+      const dealDate = new Date(closeDate);
+      if (isNaN(dealDate.getTime())) return false;
+      return dealDate >= periodStart && dealDate <= periodEnd;
+    } catch (e) {
+      return false;
+    }
   });
 
-  const openDeals = currentPeriodDeals.filter(d => !['Closed Won', 'Closed Lost'].includes(d.stage));
-  const wonDeals = currentPeriodDeals.filter(d => d.stage === 'Closed Won');
-  const lostDeals = currentPeriodDeals.filter(d => d.stage === 'Closed Lost');
+  const openDeals = currentPeriodDeals.filter(d => {
+    const stage = d.stage || d.dealStage || '';
+    return stage && 
+           stage.toLowerCase() !== 'closed won' && 
+           stage.toLowerCase() !== 'closed lost' &&
+           stage !== 'Closed Won' &&
+           stage !== 'Closed Lost';
+  });
+  const wonDeals = currentPeriodDeals.filter(d => {
+    const stage = d.stage || d.dealStage || '';
+    return stage.toLowerCase() === 'closed won' || stage === 'Closed Won';
+  });
+  const lostDeals = currentPeriodDeals.filter(d => {
+    const stage = d.stage || d.dealStage || '';
+    return stage.toLowerCase() === 'closed lost' || stage === 'Closed Lost';
+  });
   
-  const pipelineValue = openDeals.reduce((sum, d) => sum + (d.amount || 0), 0);
-  const weightedPipeline = openDeals.reduce((sum, d) => sum + ((d.amount || 0) * (d.probability || 0) / 100), 0);
-  const wonRevenue = wonDeals.reduce((sum, d) => sum + (d.amount || 0), 0);
+  const pipelineValue = openDeals.reduce((sum, d) => {
+    const amount = parseFloat(d.amount) || parseFloat(d.value) || 0;
+    return sum + (isNaN(amount) ? 0 : amount);
+  }, 0);
+  const weightedPipeline = openDeals.reduce((sum, d) => {
+    const amount = parseFloat(d.amount) || parseFloat(d.value) || 0;
+    const probability = parseFloat(d.probability) || 0;
+    return sum + ((isNaN(amount) ? 0 : amount) * (isNaN(probability) ? 0 : probability) / 100);
+  }, 0);
+  const wonRevenue = wonDeals.reduce((sum, d) => {
+    const amount = parseFloat(d.amount) || parseFloat(d.value) || 0;
+    return sum + (isNaN(amount) ? 0 : amount);
+  }, 0);
   const winRate = (wonDeals.length + lostDeals.length) > 0 
     ? (wonDeals.length / (wonDeals.length + lostDeals.length) * 100).toFixed(1)
     : 0;
@@ -154,10 +217,46 @@ export default function Forecasting() {
     .sort((a, b) => b.actual - a.actual);
 
   const pipelineByStage = [
-    { stage: 'Prospecting', value: deals.filter(d => d.stage === 'Prospecting').reduce((s, d) => s + (d.amount || 0), 0), count: deals.filter(d => d.stage === 'Prospecting').length },
-    { stage: 'Qualification', value: deals.filter(d => d.stage === 'Qualification').reduce((s, d) => s + (d.amount || 0), 0), count: deals.filter(d => d.stage === 'Qualification').length },
-    { stage: 'Proposal', value: deals.filter(d => d.stage === 'Proposal').reduce((s, d) => s + (d.amount || 0), 0), count: deals.filter(d => d.stage === 'Proposal').length },
-    { stage: 'Negotiation', value: deals.filter(d => d.stage === 'Negotiation').reduce((s, d) => s + (d.amount || 0), 0), count: deals.filter(d => d.stage === 'Negotiation').length },
+    { stage: 'Prospecting', value: deals.filter(d => {
+      const stage = d.stage || d.dealStage || '';
+      return stage.toLowerCase() === 'prospecting' || stage === 'Prospecting';
+    }).reduce((s, d) => {
+      const amount = parseFloat(d.amount) || parseFloat(d.value) || 0;
+      return s + (isNaN(amount) ? 0 : amount);
+    }, 0), count: deals.filter(d => {
+      const stage = d.stage || d.dealStage || '';
+      return stage.toLowerCase() === 'prospecting' || stage === 'Prospecting';
+    }).length },
+    { stage: 'Qualification', value: deals.filter(d => {
+      const stage = d.stage || d.dealStage || '';
+      return stage.toLowerCase() === 'qualification' || stage === 'Qualification';
+    }).reduce((s, d) => {
+      const amount = parseFloat(d.amount) || parseFloat(d.value) || 0;
+      return s + (isNaN(amount) ? 0 : amount);
+    }, 0), count: deals.filter(d => {
+      const stage = d.stage || d.dealStage || '';
+      return stage.toLowerCase() === 'qualification' || stage === 'Qualification';
+    }).length },
+    { stage: 'Proposal', value: deals.filter(d => {
+      const stage = d.stage || d.dealStage || '';
+      return stage.toLowerCase() === 'proposal' || stage === 'Proposal';
+    }).reduce((s, d) => {
+      const amount = parseFloat(d.amount) || parseFloat(d.value) || 0;
+      return s + (isNaN(amount) ? 0 : amount);
+    }, 0), count: deals.filter(d => {
+      const stage = d.stage || d.dealStage || '';
+      return stage.toLowerCase() === 'proposal' || stage === 'Proposal';
+    }).length },
+    { stage: 'Negotiation', value: deals.filter(d => {
+      const stage = d.stage || d.dealStage || '';
+      return stage.toLowerCase() === 'negotiation' || stage === 'Negotiation';
+    }).reduce((s, d) => {
+      const amount = parseFloat(d.amount) || parseFloat(d.value) || 0;
+      return s + (isNaN(amount) ? 0 : amount);
+    }, 0), count: deals.filter(d => {
+      const stage = d.stage || d.dealStage || '';
+      return stage.toLowerCase() === 'negotiation' || stage === 'Negotiation';
+    }).length },
     { stage: 'Closed Won', value: wonRevenue, count: wonDeals.length },
   ];
 
@@ -165,18 +264,29 @@ export default function Forecasting() {
     const date = new Date();
     date.setMonth(date.getMonth() - (5 - i));
     const monthDeals = deals.filter(d => {
-      const closeDate = d.actual_close_date || d.expected_close_date;
+      const closeDate = d.actual_close_date || d.actualCloseDate || d.expected_close_date || d.expectedCloseDate || d.closingDate || d.createdAt || d.created_date;
       if (!closeDate) return false;
-      const dealDate = new Date(closeDate);
-      return dealDate.getMonth() === date.getMonth() && dealDate.getFullYear() === date.getFullYear();
+      try {
+        const dealDate = new Date(closeDate);
+        if (isNaN(dealDate.getTime())) return false;
+        return dealDate.getMonth() === date.getMonth() && dealDate.getFullYear() === date.getFullYear();
+      } catch (e) {
+        return false;
+      }
     });
     
-    const won = monthDeals.filter(d => d.stage === 'Closed Won');
-    const revenue = won.reduce((sum, d) => sum + (d.amount || 0), 0);
+    const won = monthDeals.filter(d => {
+      const stage = d.stage || d.dealStage || '';
+      return stage.toLowerCase() === 'closed won' || stage === 'Closed Won';
+    });
+    const revenue = won.reduce((sum, d) => {
+      const amount = parseFloat(d.amount) || parseFloat(d.value) || 0;
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0);
     
     return {
       month: format(date, 'MMM'),
-      revenue: revenue,
+      revenue: Math.round(revenue),
       deals: won.length
     };
   });
